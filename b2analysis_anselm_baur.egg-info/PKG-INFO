@@ -1,0 +1,18 @@
+Metadata-Version: 2.1
+Name: b2analysis-anselm-baur
+Version: 0.0.1
+Summary: analysis package for my Belle II related anlyses
+Home-page: https://github.com/anselm-baur/b2analysis
+Author: Anselm Baur
+Author-email: anselm.baur@desy.de
+License: UNKNOWN
+Description: This package contains my tools I wrote for Belle II analyses. The source code is hosted on GitHub:
+        https://github.com/anselm-baur/b2analysis
+        
+        
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
