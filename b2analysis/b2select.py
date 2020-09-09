@@ -1,20 +1,29 @@
+import functools as ft
+import operator 
 import numpy as np
+from itertools import compress
 
 class PiPiY:
     @staticmethod
-    def y(df, Ecms=3, theta=np.radians([50,110])):
-        return ((df["daughter(1,useCMSFrame(E))"] > Ecms) &
-                (df["daughter(1,theta)"] > theta[0]) & (df["daughter(1,theta)"] < theta[1]))  
+    def y(df, Ecms=3, theta=np.radians([50,110]),mask=[True]*2):
+        cuts = [
+                (df["daughter(1,useCMSFrame(E))"] > Ecms) ,
+                (df["daughter(1,theta)"] > theta[0]) & (df["daughter(1,theta)"] < theta[1])
+        ]
+        return ft.reduce(operator.and_, list(compress(cuts,mask)))
 
     @staticmethod
-    def pipi(df, p=1, d0=2, z0=4, EoP=0.8, pValue=0.001, nCDCHits=4, mask=[]):
+    def pipi(df, p=1, d0=2, z0=4, EoP=0.8, pValue=0.001, nCDCHits=4, mask=[True]*6):
+        cuts = [
+                (df["daughter(0,daughter(0,p))"] > p) & (df["daughter(0,daughter(1,p))"] > p),
+                (df["daughter(0,daughter(0,d0))"].abs() < d0) & (df["daughter(0,daughter(1,d0))"].abs() < d0),
+                (df["daughter(0,daughter(0,z0))"].abs() < z0) & (df["daughter(0,daughter(1,z0))"].abs() < z0),
+                (df["daughter(0,daughter(0,clusterEoP))"] < EoP) & (df["daughter(0,daughter(1,clusterEoP))"] < EoP),
+                (df["daughter(0,daughter(0,nCDCHits))"] > nCDCHits) & (df["daughter(0,daughter(1,nCDCHits))"] > nCDCHits),
+                (df["daughter(0,daughter(0,pValue))"] > pValue) & (df["daughter(0,daughter(1,pValue))"] > pValue)
+        ]
 
-        return ((df["daughter(0,daughter(0,p))"] > p) & (df["daughter(0,daughter(1,p))"] > p) & 
-                (df["daughter(0,daughter(0,d0))"].abs() < d0) & (df["daughter(0,daughter(1,d0))"].abs() < d0) &
-                (df["daughter(0,daughter(0,z0))"].abs() < z0) & (df["daughter(0,daughter(1,z0))"].abs() < z0) &
-                (df["daughter(0,daughter(0,clusterEoP))"] < EoP) & (df["daughter(0,daughter(1,clusterEoP))"] < EoP) &
-                (df["daughter(0,daughter(0,nCDCHits))"] > nCDCHits) & (df["daughter(0,daughter(1,nCDCHits))"] > nCDCHits) &
-                (df["daughter(0,daughter(0,pValue))"] > pValue) & (df["daughter(0,daughter(1,pValue))"] > pValue))
+        return ft.reduce(operator.and_, list(compress(cuts,mask)))
 
     @staticmethod
     def pipiy(df, M=[10,11]):
