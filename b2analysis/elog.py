@@ -4,6 +4,7 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 from lxml import html
+from lxml import etree
 from collections import namedtuple
 
 import numpy as np
@@ -26,7 +27,7 @@ class ELog:
     def _get_run_db_id(self,run_nr, exp_nr):
         #get the id of the run
 
-        request_url = 'https://elog.belle2.org/elog/Beam+run/?Exp+number={}&Run+number={}'.format(exp_nr,run_nr)
+        request_url = 'https://elog.belle2.org/elog/Beam+run/?Exp+number={}&Run+number={}&sort=Run+number'.format(exp_nr,run_nr) #sort by ascending run numbers
         #print(request_url)
 
         #open db entry of db id 
@@ -40,8 +41,21 @@ class ELog:
             entries = [[j.strip() for j in i.text.split('\n')] for i in tree.xpath("//td[@class='messagelist']/pre") if i.text]
             # build namedtuple containing the columns
             Summary = namedtuple('Summary', 'ID JSTTime Author Subject Type Category Exp_number Run_number Num_events Run_time Solenoid Subdetectors DQMPlots Text Attach')
-            db_id = [Summary(*[j.getchildren()[0].text for j in i.getchildren()]) for i in tree.xpath("//tr[td/@class='list1'] | //tr[td/@class='list2']")][0][0].replace('\xa0','')
-            return db_id
+               
+            '''
+            for i in tree.xpath("//tr[td/@class='list1'] | //tr[td/@class='list2']"):
+                for j in i.getchildren():
+                    print('--------')
+                    print(j.getchildren()[0].text)
+            '''
+            entries = [Summary(*[j.getchildren()[0].text for j in i.getchildren()]) for i in tree.xpath("//tr[td/@class='list1'] | //tr[td/@class='list2']")]
+            for e in entries:
+                if e.Subject.split(' ')[2] == str(run_nr):
+                    db_id = e.ID.replace('\xa0','')
+                    print(e.Subject)
+                    return db_id
+                else:
+                    return None
         except:
             return None
 
