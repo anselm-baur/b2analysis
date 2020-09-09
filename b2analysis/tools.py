@@ -3,6 +3,7 @@ import re
 import os, os.path
 import numpy as np
 from getpass import getpass, getuser
+import pandas as pd
 
 
 def invert_root_mangling(variables: List[str]):
@@ -94,3 +95,26 @@ if __name__ == '__main__':
     print(get_lumi_in_pb(total_lumi))
     #print(get_lumi_in_pb(get_integrated_luminosity(8,1539,username,password)))
     #print(get_lumi_in_pb(get_integrated_luminosity(8,1540,username,password)))
+
+# Particle merger 
+# -------------------
+def do_merge(df, col1, col2, col_merged):
+    # merge 2 cols of a pandas dataframe in a new dataframe
+    merged_df1 = pd.DataFrame({col_merged: df[col1]})
+    merged_df2 = pd.DataFrame({col_merged: df[col2]})
+    return pd.concat([merged_df1, merged_df2], ignore_index=True)
+
+def merge_cols(df, col_list_1, col_list_2, col_list_out, weight=1, additional_variables=[]):
+    # merge the dataframe variable cols of 2 particles to a single particle
+    df_merged = pd.DataFrame()
+    for col_1, col_2, col_out in zip(col_list_1,col_list_2,col_list_out):
+        df_merged[col_out] = do_merge(df, col_1, col_2, col_out)[col_out]
+    
+    # we want additinal variables independent from the merged variables also in the new merged data frame
+    for var in additional_variables:
+        df_merged = pd.concat([df_merged,df.loc[:,var].reset_index(drop=True)],ignore_index=False, axis=1, join="outer", sort=False)
+
+
+    df_merged['__weight__'] = weight
+
+    return df_merged
