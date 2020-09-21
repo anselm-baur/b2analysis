@@ -26,8 +26,10 @@ class Efficiency:
         k_df_list = []
 
         for i in range(len(variable_list)):
+            # copy the relevant variabable column and the weight column
             n_df_list.append(self.df[[variable_list[i], '__weight__']].copy())
-            k_df_list.append((self.df[[variable_list[i], '__weight__']].copy())[self.selection])
+            # select the k subset and copy only the relevant variable column and weight column
+            k_df_list.append(self.df.loc[self.selection][[variable_list[i], '__weight__']].copy())
 
 
             _n_hist, bins = np.histogram(n_df_list[i][variable_list[i]], **_kwargs)
