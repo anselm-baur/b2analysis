@@ -118,3 +118,17 @@ def merge_cols(df, col_list_1, col_list_2, col_list_out, weight=1, additional_va
     df_merged['__weight__'] = weight
 
     return df_merged
+
+
+def makedirs(path):
+        """
+        Create all parent folders if they do not exist.
+        """
+        normpath = os.path.normpath(path)
+        parentfolder = os.path.dirname(normpath)
+        if parentfolder:
+            try:
+                os.makedirs(parentfolder)
+            except OSError:
+                pass
+
