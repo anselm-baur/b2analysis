@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="b2analysis-anselm-baur", # Replace with your own username
-    version="0.0.1",
+    version="0.0.2",
     author="Anselm Baur",
     author_email="anselm.baur@desy.de",
     description="analysis package for my Belle II related anlyses",
