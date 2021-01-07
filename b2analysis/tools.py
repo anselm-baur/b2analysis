@@ -29,6 +29,12 @@ def scale_integrated_luminosity_by_cross_section(n_mc_events, cross_section, l_i
     '''
     return l_int_data*cross_section/n_mc_events
 
+def scale_integrated_luminosity_by_luminosity(l_int_mc, l_int_data):
+    '''
+    this function can be used to scale mc to data integrated luminosity if the luminosity of the mc_sample is known
+    '''
+    return l_int_data/l_int_mc
+
 def get_number_of_files(path):
     return len([name for name in os.listdir('.') if os.path.isfile(name)])
 
