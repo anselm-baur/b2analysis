@@ -5,13 +5,13 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="b2analysis-anselm-baur", # Replace with your own username
-    version="0.0.2",
+    version="0.0.3",
     author="Anselm Baur",
     author_email="anselm.baur@desy.de",
     description="analysis package for my Belle II related anlyses",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/anselm-baur/b2analysis",
+    url="https://stash.desy.de/users/abaur/repos/b2analysis/browse",
     packages=setuptools.find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

@@ -3,6 +3,8 @@ This file contains a collection of administration classes, to administrate
 multiple occurance of the same objects
 '''
 
+from pathlib import Path
+
 class RegisteredModule:
     '''
     This is a data class for a basf2 module
@@ -13,7 +15,7 @@ class RegisteredModule:
         self.parameters = parameters
         self.module = module
 
-class ModulAdmin:
+class ModuleAdmin:
     '''
     This class administrates registered basf2 modules. So simply a modul chain can be
     created, initialized and administrated
@@ -87,7 +89,7 @@ class DataAdmin:
     def InputName(self, name):
         return self.data.input_name
 
-    def OuputPath(self, name):
+    def OutputPath(self, name):
         return self.OutputParentPath(name)/Path(self.data[name].output_name)
 
     def OutputParentPath(self, name):
