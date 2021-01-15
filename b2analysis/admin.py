@@ -70,9 +70,16 @@ class DataAdmin:
     This class handels a collection of same kind of data files which are used to be
     processed and create a certain output
     '''
-    def __init__(self, central_dir=''):
+    def __init__(self, central_dir='', central_input_dir='./', central_output_dir='./'):
         self.data = {}
         self.central_dir = central_dir
+        
+        if self.central_dir:
+            self.central_input_dir = central_dir
+            self.central_output_dir = central_dir
+        else:
+            self.central_input_dir = central_input_dir
+            self.central_output_dir = central_output_dir
 
     def add(self, name, input_name, output_name='out', sub_input_dir='', sub_output_dir=''):
         self.data[name] = Data(input_name=input_name,
@@ -84,16 +91,16 @@ class DataAdmin:
         return self.InputParentPath(name)/Path(self.data[name].input_name)
 
     def InputParentPath(self, name):
-        return Path(self.central_dir)/Path(self.data[name].sub_input_dir)
+        return Path(self.central_input_dir)/Path(self.data[name].sub_input_dir)
 
     def InputName(self, name):
-        return self.data.input_name
+        return self.data[name].input_name
 
     def OutputPath(self, name):
         return self.OutputParentPath(name)/Path(self.data[name].output_name)
 
     def OutputParentPath(self, name):
-        return Path(self.central_dir)/Path(self.data[name].sub_output_dir)
+        return Path(self.central_output_dir)/Path(self.data[name].sub_output_dir)
 
     def OutputName(self, name):
         return Path(self.data[name].output_name)
