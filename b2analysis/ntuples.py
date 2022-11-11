@@ -67,7 +67,7 @@ class NtupleToDf:
             self.variable_list = self.ntuple.get_variable_list()
             self.variable_list = list(dict.fromkeys(self.variable_list)) # remove dublicate entries``
         else:
-            self.variable_listv = variable_list
+            self.variable_list = variable_list
         self.ntuple.load_variables(self.variable_list)
         self.df = self.ntuple.df
 
