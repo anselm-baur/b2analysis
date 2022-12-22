@@ -5,26 +5,55 @@ from b2style import B2Figure
 class Histogram:
     """Analysis Histogram Class."""
 
-    def __init__(self, name, data, lumi, lumi_scale=1, var="", unit="", is_signal=False, **kwargs):
+    def __init__(self, name, data, lumi, lumi_scale=1, var="", unit="", is_signal=False, overflow_bin=False, **kwargs):
         self.is_signal = is_signal
         self.name = name
         self.var = var
         self.lumi = lumi
         self.lumi_scale = lumi_scale # basically the weight of each event
         self.unit = unit
+        self.overflow_bin = overflow_bin
 
-        np_hist = np.histogram(data, **kwargs)
-        self.bin_counts = np_hist[0]
-        self.bin_edges = np_hist[1]
-        self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
+        if not overflow_bin:
+            np_hist = np.histogram(data, **kwargs)
+            self.bin_counts = np_hist[0]
+            self.bin_edges = np_hist[1]
+            self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
 
-        self.range = (self.bin_edges[0], self.bin_edges[-1])
-        self.bins = self.bin_centers.size
+            self.range = (self.bin_edges[0], self.bin_edges[-1])
+            self.bins = self.bin_centers.size
+            
+        else:
+            if not "range" in kwargs:
+                kwargs["range"] = (np.min(data), np.max(data))
+            if not "bins" in kwargs:
+                kwargs["bins"] = 50
+            kwargs["bins"] = np.concatenate([[-np.inf], 
+                                            np.linspace(*kwargs["range"], kwargs["bins"]),
+                                            [np.inf]])
+            np_hist = np.histogram(data, **kwargs)
+            self.bin_counts = np_hist[0]
+            self.bin_edges = np_hist[1]
+            
+            
+    def _trim_hist(self, a, b):
+        if a == 0:
+            self.bin_counts[b] = np.sum(self.bin_counts[:b+1])
+            self.bin_counts = self.bin_counts[b:]
+            self.bin_edges = self.bin_edges[b:]
+        elif b == -1:
+            self.bin_counts[a] = np.sum(self.bin_counts[a:])
+            self.bin_counts = self.bin_counts[:a+1]
+            self.bin_edges = self.bin_edges[:a+1]
+        else:
+            self.bin_counts[a] = np.sum(self.bin_counts[a:b+1])
+            self.bin_counts = np.concatenate([self.bin_counts[:a+1], self.bin_counts[b+1:]])
+            self.bin_edges = np.concatenate([self.bin_edges[:a+1], self.bin_edges[b+1:]])
 
-    def plot(self, fig=None, ax=None):
+    def plot(self, fig=None, ax=None, dpi=100):
         b2fig = B2Figure()
         if not fig and not ax:
-            fig, ax = b2fig.create(ncols=1, nrows=1)
+            fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
         ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.stat_uncert(), label=self.name, **b2fig.errorbar_args)
         unit = f" in {self.unit}"
         ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
@@ -71,46 +100,77 @@ class HistogramCanvas:
         self.add_histogram(Histogram(name, data, lumi, lumi_scale, is_signal=is_signal, **kwargs))
 
 
-    def plot(self, xlabel=""):
+    def plot(self, xlabel="", histtype="errorbar", dpi=100):
         self.b2fig = B2Figure(auto_description=True, description=self.description)
-        self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1)
+        self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi)
 
         ax=self.ax
+        uncert_label = True
         for name, hist in self.hists.items():
-            ax.errorbar(self.bin_centers, hist.bin_counts, yerr=np.sqrt(hist.bin_counts), label=name, **self.b2fig.errorbar_args)
+            if histtype == "errorbar":
+                ax.errorbar(self.bin_centers, hist.bin_counts, yerr=np.sqrt(hist.bin_counts), label=name, **self.b2fig.errorbar_args)
+            elif histtype == "step":
+                x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
+                y = np.concatenate([[0], hist.bin_counts, [0]])
+                ax.step(x, y, label=name, lw=0.9)
+                uncert = np.sqrt(hist.bin_counts)
+                bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
+                ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.bin_counts-uncert,
+                       edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
+                if uncert_label: uncert_label = False
+            else:
+                raise ValueError(f"histtype {histtype} not implemented!")
         if xlabel:
             ax.set_xlabel(xlabel)
         ax.set_ylabel("events")
         self.b2fig.shift_offset_text_position(ax)
         ax.legend(loc='upper left', prop={'size': 7})
 
-    def add_labels(self, xlabel="", ylabel="events"):
+    def add_labels(self, ax, xlabel="", ylabel="events"):
         if xlabel:
-            self.ax.set_xlabel(xlabel)
+            ax.set_xlabel(xlabel)
         else:
             unit = f" in {self.unit}"
-            self.ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
-        self.ax.set_ylabel(ylabel)
+            ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
+        ax.set_ylabel(ylabel)
 
 
 class StackedHistogram(HistogramCanvas):
     """Class to aggregate the Histogram objects and stack them."""
 
-    def plot(self):
+    def plot(self, dpi=90):
         """Plot the stacked histogram"""
-        #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
-        colors = plt.cm.gist_earth(np.linspace(0.1,0.75,len(self.hists)))
-        self.b2fig = B2Figure(auto_description=True, description=self.description)
-        self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1)
 
-        ax=self.ax
+        self.b2fig = B2Figure(auto_description=True, description=self.description)
+        self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi)
+
+        self.plot_ax(self.ax)
+        self.b2fig.shift_offset_text_position(self.ax)
+        self.add_labels(ax=self.ax)
+
+        return self.fig, self.ax
+
+    def color_scheme(self, reverse=False):
+        if reverse:
+            self.colors = plt.cm.gist_earth(np.flip(np.linspace(0.1,0.75,len(self.hists))))
+        else:
+            self.colors = plt.cm.gist_earth(np.linspace(0.1,0.75,len(self.hists)))
+
+    def plot_ax(self, ax, reverse_colors=False):
+        #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
+        if not self.b2fig:
+            self.b2fig = B2Figure()
+
+        self.color_scheme(reverse=reverse_colors)
+        colors=self.colors
+
         stack = np.zeros(self.bin_centers.size)
         i=0
         for name, hist in self.hists.items():
             color = "red" if hist.is_signal else colors[i]
             #print(f"stack {name}")
             #ax.plot(self.bin_centers, stack+hist.bin_counts, drawstyle="steps", color=colors[i], linewidth=0.5)
-            self.ax.fill_between(self.bin_centers, stack, stack+hist.bin_counts, label=name, step="mid",
+            ax.fill_between(self.bin_centers, stack, stack+hist.bin_counts, label=name, step="mid",
                             linewidth=0, linestyle="-", color=color)
             stack += hist.bin_counts
             i += 1
@@ -121,10 +181,11 @@ class StackedHistogram(HistogramCanvas):
                 edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc.")
 
         ax.legend()
-        self.add_labels()
-        self.b2fig.shift_offset_text_position(ax)
+        self.add_labels(ax=ax)
+        self.b2fig.shift_offset_text_position_old(ax)
 
-        return self.fig, self.ax
+
+
 
     def get_stat_uncert(self):
         """Calculate the stacked uncertainty of the stacked histogram using sqrt(sum(sum(lumi_scale_1**2), sum(lumi_scale_2**2), ..., sum(lumi_scale_n**2)))
