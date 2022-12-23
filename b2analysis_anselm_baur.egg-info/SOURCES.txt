@@ -11,9 +11,7 @@ b2analysis/histogram.py
 b2analysis/ntuples.py
 b2analysis/pxd.py
 b2analysis/tools.py
-b2analysis_anselm_baur.egg-info/.PKG-INFO.un~
 b2analysis_anselm_baur.egg-info/PKG-INFO
-b2analysis_anselm_baur.egg-info/PKG-INFO~
 b2analysis_anselm_baur.egg-info/SOURCES.txt
 b2analysis_anselm_baur.egg-info/dependency_links.txt
 b2analysis_anselm_baur.egg-info/top_level.txt

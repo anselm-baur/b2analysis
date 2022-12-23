@@ -18,24 +18,30 @@ class Histogram:
             np_hist = np.histogram(data, **kwargs)
             self.bin_counts = np_hist[0]
             self.bin_edges = np_hist[1]
-            self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
+            self._update_bins()
 
-            self.range = (self.bin_edges[0], self.bin_edges[-1])
-            self.bins = self.bin_centers.size
-            
         else:
             if not "range" in kwargs:
                 kwargs["range"] = (np.min(data), np.max(data))
             if not "bins" in kwargs:
                 kwargs["bins"] = 50
-            kwargs["bins"] = np.concatenate([[-np.inf], 
-                                            np.linspace(*kwargs["range"], kwargs["bins"]),
+            kwargs["bins"] = np.concatenate([[-np.inf],
+                                            np.linspace(*kwargs["range"], kwargs["bins"]+1),
                                             [np.inf]])
             np_hist = np.histogram(data, **kwargs)
             self.bin_counts = np_hist[0]
             self.bin_edges = np_hist[1]
-            
-            
+            self._trim_hist(0,1)
+            self._trim_hist(-2,-1)
+
+
+
+    def _update_bins(self):
+        self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
+        self.range = (self.bin_edges[0], self.bin_edges[-1])
+        self.bins = self.bin_centers.size
+
+
     def _trim_hist(self, a, b):
         if a == 0:
             self.bin_counts[b] = np.sum(self.bin_counts[:b+1])
@@ -49,13 +55,27 @@ class Histogram:
             self.bin_counts[a] = np.sum(self.bin_counts[a:b+1])
             self.bin_counts = np.concatenate([self.bin_counts[:a+1], self.bin_counts[b+1:]])
             self.bin_edges = np.concatenate([self.bin_edges[:a+1], self.bin_edges[b+1:]])
+        self._update_bins()
 
-    def plot(self, fig=None, ax=None, dpi=100):
+
+    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True):
         b2fig = B2Figure()
         if not fig and not ax:
             fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
-        ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.stat_uncert(), label=self.name, **b2fig.errorbar_args)
+
+        if histtype == "errorbar":
+            ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.stat_uncert(), label=self.name, **b2fig.errorbar_args)
+        elif histtype == "step":
+            x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
+            y = np.concatenate([[0], self.bin_counts, [0]])
+            ax.step(x, y, label=self.name, lw=0.9)
+            uncert = np.sqrt(self.bin_counts)
+            bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
+            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.bin_counts-uncert,
+                    edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
+            if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
+        ax.set_xlim((*self.range))
         ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
         ax.set_ylabel("events")
         ax.legend()
@@ -89,6 +109,8 @@ class HistogramCanvas:
             self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
             self.bin_centers = hist.bin_centers
             self.unit = hist.unit
+            self.bins = hist.bins
+            self.range = hist.range
         else:
             assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
         if not hist.lumi * hist.lumi_scale == self.lumi:
@@ -120,6 +142,7 @@ class HistogramCanvas:
                 if uncert_label: uncert_label = False
             else:
                 raise ValueError(f"histtype {histtype} not implemented!")
+        ax.set_xlim((*self.range))
         if xlabel:
             ax.set_xlabel(xlabel)
         ax.set_ylabel("events")
