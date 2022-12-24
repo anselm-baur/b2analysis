@@ -187,24 +187,30 @@ class StackedHistogram(HistogramCanvas):
         self.color_scheme(reverse=reverse_colors)
         colors=self.colors
 
+        bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
         i=0
         for name, hist in self.hists.items():
             color = "red" if hist.is_signal else colors[i]
             #print(f"stack {name}")
             #ax.plot(self.bin_centers, stack+hist.bin_counts, drawstyle="steps", color=colors[i], linewidth=0.5)
-            ax.fill_between(self.bin_centers, stack, stack+hist.bin_counts, label=name, step="mid",
-                            linewidth=0, linestyle="-", color=color)
+            #ax.fill_between(self.bin_centers, stack, stack+hist.bin_counts, label=name, step="mid",
+            #                linewidth=0, linestyle="-", color=color)
+            #ax.fill_between(self.bin_centers, stack, stack+hist.bin_counts, label=name, step="mid",
+            #                linewidth=0, linestyle="-", color=color)
+            ax.bar(x=self.bin_centers, height=hist.bin_counts, width=bin_width, bottom=stack,
+                color=color, lw=0,label=name)
+
             stack += hist.bin_counts
             i += 1
 
         uncert = self.get_stat_uncert()
-        bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=stack-uncert,
                 edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc.")
 
         ax.legend()
         self.add_labels(ax=ax)
+        ax.set_xlim((*self.range))
         self.b2fig.shift_offset_text_position_old(ax)
 
 
