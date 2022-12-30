@@ -1,6 +1,17 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from b2style import B2Figure
+
+class HistogramBase:
+
+    def __init__(self, output_dir = "") -> None:
+        self.output_dir = output_dir
+        self.fig = None
+        self.ax = None
+
+    def savefig(self, filename):
+        self.fig.savefig(os.path.join(self.output_dir, filename))
 
 class Histogram:
     """Analysis Histogram Class."""
@@ -86,10 +97,11 @@ class Histogram:
         return np.sqrt(self.bin_counts)
 
 
-class HistogramCanvas:
+class HistogramCanvas(HistogramBase):
     """Class to aggregate the Histogram objects and plot them for comparison."""
 
-    def __init__(self, lumi, var="", simulation=True, unit=""):
+    def __init__(self, lumi, var="", simulation=True, unit="", mc_campaign="", **kwargs):
+        super().__init__(**kwargs)
         self.lumi = lumi
         self.var = var
         self.hists = {}
@@ -97,7 +109,8 @@ class HistogramCanvas:
         self.bin_edges = np.array([])
         self.bin_centers = np.array([])
         self.description = {"luminosity": self.lumi,
-                            "simulation": True}
+                            "simulation": True,
+                            "additional_info": mc_campaign}
 
         self.b2fig = None
         self.fig = None
@@ -122,19 +135,27 @@ class HistogramCanvas:
         self.add_histogram(Histogram(name, data, lumi, lumi_scale, is_signal=is_signal, **kwargs))
 
 
-    def plot(self, xlabel="", histtype="errorbar", dpi=100):
+    def plot(self, xlabel="", histtype="errorbar", dpi=100, log=False, ax=None, fig=None, figsize=(6,6), colors=[], reverse_colors=False):
         self.b2fig = B2Figure(auto_description=True, description=self.description)
-        self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi)
+        if not ax and not fig:
+            self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi, figsize=figsize)
+        else:
+            self.fig = fig
+            self.ax = ax
+        if len(colors) < 1:
+            self.color_scheme(reverse=reverse_colors)
+            colors = self.colors
+
 
         ax=self.ax
         uncert_label = True
-        for name, hist in self.hists.items():
+        for i, (name, hist) in enumerate(self.hists.items()):
             if histtype == "errorbar":
                 ax.errorbar(self.bin_centers, hist.bin_counts, yerr=np.sqrt(hist.bin_counts), label=name, **self.b2fig.errorbar_args)
             elif histtype == "step":
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
                 y = np.concatenate([[0], hist.bin_counts, [0]])
-                ax.step(x, y, label=name, lw=0.9)
+                ax.step(x, y, label=name, lw=0.9, color=colors[i])
                 uncert = np.sqrt(hist.bin_counts)
                 bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
                 ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.bin_counts-uncert,
@@ -145,9 +166,15 @@ class HistogramCanvas:
         ax.set_xlim((*self.range))
         if xlabel:
             ax.set_xlabel(xlabel)
+        if log:
+            ax.set_yscale("log")
+            ax.set_ylim((0.5, ax.get_ylim()[1]))
         ax.set_ylabel("events")
         self.b2fig.shift_offset_text_position(ax)
-        ax.legend(loc='upper left', prop={'size': 7})
+        #ax.legend(loc='upper left', prop={'size': 7})
+        ax.legend()
+        self.b2fig.shift_offset_text_position_old(ax)
+
 
     def add_labels(self, ax, xlabel="", ylabel="events"):
         if xlabel:
@@ -156,6 +183,13 @@ class HistogramCanvas:
             unit = f" in {self.unit}"
             ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
         ax.set_ylabel(ylabel)
+
+
+    def color_scheme(self, reverse=False):
+        if reverse:
+            self.colors = plt.cm.gist_earth(np.flip(np.linspace(0.1,0.75,len(self.hists))))
+        else:
+            self.colors = plt.cm.gist_earth(np.linspace(0.1,0.75,len(self.hists)))
 
 
 class StackedHistogram(HistogramCanvas):
@@ -173,11 +207,6 @@ class StackedHistogram(HistogramCanvas):
 
         return self.fig, self.ax
 
-    def color_scheme(self, reverse=False):
-        if reverse:
-            self.colors = plt.cm.gist_earth(np.flip(np.linspace(0.1,0.75,len(self.hists))))
-        else:
-            self.colors = plt.cm.gist_earth(np.linspace(0.1,0.75,len(self.hists)))
 
     def plot_ax(self, ax, reverse_colors=False):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
