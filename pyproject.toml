@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "b2analysis" # Replace with your own username
+name = "b2analysis-anselm-baur" # Replace with your own username
 version = "0.0.11"
 authors = [
     { name="Anselm Baur", email="anselm.baur@desy.de"}
@@ -21,3 +21,12 @@ classifiers = [
 
 [project.urls]
 "Homepage" = "https://stash.desy.de/users/abaur/repos/b2analysis/browse"
+
+
+[tool.setuptools.dynamic]
+version =  {attr = "b2analysis-anselm-baur.VERSION"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["b2analysis"]
+
