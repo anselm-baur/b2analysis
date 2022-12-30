@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "b2analysis-anselm-baur" # Replace with your own username
+version = "0.0.11"
+authors = [
+    { name="Anselm Baur", email="anselm.baur@desy.de"}
+]
+description = "analysis package for my Belle II related anlyses"
+readme = "README.md"
+requires-python = ">=3.6"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+
+[project.urls]
+"Homepage" = "https://stash.desy.de/users/abaur/repos/b2analysis/browse"
