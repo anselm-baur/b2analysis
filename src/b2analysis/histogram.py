@@ -25,8 +25,10 @@ class Histogram:
         self.unit = unit
         self.overflow_bin = overflow_bin
 
+        self.weights = np.full(data.size, self.lumi_scale)
+
         if not overflow_bin:
-            np_hist = np.histogram(data, **kwargs)
+            np_hist = np.histogram(data, weights=self.weights, **kwargs)
             self.bin_counts = np_hist[0]
             self.bin_edges = np_hist[1]
             self._update_bins()
@@ -39,7 +41,7 @@ class Histogram:
             kwargs["bins"] = np.concatenate([[-np.inf],
                                             np.linspace(*kwargs["range"], kwargs["bins"]+1),
                                             [np.inf]])
-            np_hist = np.histogram(data, **kwargs)
+            np_hist = np.histogram(data, weights=self.weights, **kwargs)
             self.bin_counts = np_hist[0]
             self.bin_edges = np_hist[1]
             self._trim_hist(0,1)
@@ -94,7 +96,20 @@ class Histogram:
         return fig, ax
 
     def stat_uncert(self):
-        return np.sqrt(self.bin_counts)
+        """
+        relative error stays constant with scaling:
+        sqrt(n_1) / n_1 = x / n_2
+        -> x = sqrt(n_1) * n_2 / n_1
+             = lumi_scale * sqrt(n_1)
+
+        we need to calculate the bin_contents without weights:
+        n_2 = n_1 * lumi_scale
+        -> n_1 = n_2 / lumi_scale
+
+        so the scaled uncertainty is:
+        x = sigma = lumi_scale * sqrt(n_2) / sqrt(lumi_scale)
+        """
+        return np.sqrt(self.bin_counts)*(self.lumi_scale**(3/2))
 
 
 class HistogramCanvas(HistogramBase):
@@ -126,7 +141,7 @@ class HistogramCanvas(HistogramBase):
             self.range = hist.range
         else:
             assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
-        if not hist.lumi * hist.lumi_scale == self.lumi:
+        if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
             raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} not compatible with desired luminosity {self.lumi}")
         self.hists[hist.name] = hist
 
@@ -195,20 +210,20 @@ class HistogramCanvas(HistogramBase):
 class StackedHistogram(HistogramCanvas):
     """Class to aggregate the Histogram objects and stack them."""
 
-    def plot(self, dpi=90):
+    def plot(self, dpi=90, log=False):
         """Plot the stacked histogram"""
 
         self.b2fig = B2Figure(auto_description=True, description=self.description)
         self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi)
 
-        self.plot_ax(self.ax)
+        self.plot_ax(self.ax, log=log)
         self.b2fig.shift_offset_text_position(self.ax)
         self.add_labels(ax=self.ax)
 
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, reverse_colors=False):
+    def plot_ax(self, ax, reverse_colors=False, log=False):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
             self.b2fig = B2Figure()
@@ -237,6 +252,9 @@ class StackedHistogram(HistogramCanvas):
         ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=stack-uncert,
                 edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc.")
 
+        if log:
+            ax.set_yscale("log")
+            ax.set_ylim((0.5, ax.get_ylim()[1]))
         ax.legend()
         self.add_labels(ax=ax)
         ax.set_xlim((*self.range))
@@ -250,7 +268,8 @@ class StackedHistogram(HistogramCanvas):
         of the n histograms."""
         uncert = np.zeros(self.bin_centers.size)
         for name, hist in self.hists.items():
-            uncert += hist.bin_counts*hist.lumi_scale**2
+            # sigma = n2/lumi_scale *lumi_scale**2
+            uncert += hist.bin_counts/hist.lumi_scale*hist.lumi_scale**2
         return np.sqrt(uncert)
 
 
