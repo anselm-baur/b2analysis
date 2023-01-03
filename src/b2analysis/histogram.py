@@ -210,13 +210,13 @@ class HistogramCanvas(HistogramBase):
 class StackedHistogram(HistogramCanvas):
     """Class to aggregate the Histogram objects and stack them."""
 
-    def plot(self, dpi=90, log=False):
+    def plot(self, dpi=90, **kwargs):
         """Plot the stacked histogram"""
 
         self.b2fig = B2Figure(auto_description=True, description=self.description)
         self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi)
 
-        self.plot_ax(self.ax, log=log)
+        self.plot_ax(self.ax, **kwargs)
         self.b2fig.shift_offset_text_position(self.ax)
         self.add_labels(ax=self.ax)
 
