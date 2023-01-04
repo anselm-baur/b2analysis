@@ -47,6 +47,10 @@ class Histogram:
             self._trim_hist(0,1)
             self._trim_hist(-2,-1)
 
+        self.size = self.bin_centers.size
+        self.err = self.stat_uncert()
+        self.entries = self.bin_counts
+
 
 
     def _update_bins(self):
@@ -96,8 +100,7 @@ class Histogram:
         return fig, ax
 
     def stat_uncert(self):
-        """
-        relative error stays constant with scaling:
+        """relative error stays constant with scaling:
         sqrt(n_1) / n_1 = x / n_2
         -> x = sqrt(n_1) * n_2 / n_1
              = lumi_scale * sqrt(n_1)
@@ -113,9 +116,10 @@ class Histogram:
 
 
 class HistogramCanvas(HistogramBase):
-    """Class to aggregate the Histogram objects and plot them for comparison."""
+    """Class to aggregate the Histogram objects and plot them
+    for comparison."""
 
-    def __init__(self, lumi, var="", simulation=True, unit="", mc_campaign="", **kwargs):
+    def __init__(self, lumi, var="", simulation=True, unit="", mc_campaign="", is_simulation=True, **kwargs):
         super().__init__(**kwargs)
         self.lumi = lumi
         self.var = var
@@ -124,7 +128,7 @@ class HistogramCanvas(HistogramBase):
         self.bin_edges = np.array([])
         self.bin_centers = np.array([])
         self.description = {"luminosity": self.lumi,
-                            "simulation": True,
+                            "simulation": is_simulation,
                             "additional_info": mc_campaign}
 
         self.b2fig = None
@@ -132,7 +136,7 @@ class HistogramCanvas(HistogramBase):
         self.ax = None
 
     def add_histogram(self, hist):
-        """Add a histogram to the stack"""
+        """Add a histogram to the canvas."""
         if not self.bin_edges.any():
             self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
             self.bin_centers = hist.bin_centers
@@ -150,19 +154,38 @@ class HistogramCanvas(HistogramBase):
         self.add_histogram(Histogram(name, data, lumi, lumi_scale, is_signal=is_signal, **kwargs))
 
 
-    def plot(self, xlabel="", histtype="errorbar", dpi=100, log=False, ax=None, fig=None, figsize=(6,6), colors=[], reverse_colors=False):
-        self.b2fig = B2Figure(auto_description=True, description=self.description)
-        if not ax and not fig:
-            self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi, figsize=figsize)
+    def plot(self, dpi=90, figsize=(6,6), pull_args={}, **kwargs):
+        """Plot the histogram canvas."""
+
+
+        if "hist_name" in pull_args and "nom_hist_name" in pull_args:
+            self.b2fig = B2Figure(auto_description=False)
+            self.fig, ax = self.b2fig.create(ncols=1, nrows=2, dpi=dpi, figsize=figsize, gridspec_kw={'height_ratios': [2, 1]})
+            self.ax = ax[0]
+            self.b2fig.add_descriptions(ax=self.ax, **self.description)
+            self.ax_pull = ax[1]
+            #move the xlabel to the pull plot
+            if "xlabel" in kwargs:
+                pull_args["xlabel"] = kwargs["xlabel"]
+                kwargs["xlabel"] = ""
+            self.pull_plot(self.ax_pull, **pull_args)
+            self.ax.set_xticklabels([])
+            self.fig.subplots_adjust(hspace=0.05)
         else:
-            self.fig = fig
-            self.ax = ax
+            self.b2fig = B2Figure(auto_description=True, description=self.description)
+            self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi, figsize=figsize)
+
+        self.plot_ax(self.ax, **kwargs)
+        self.b2fig.shift_offset_text_position(self.ax)
+        self.add_labels(ax=self.ax)
+
+        return self.fig, self.ax
+
+    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, colors=[], reverse_colors=False):
         if len(colors) < 1:
             self.color_scheme(reverse=reverse_colors)
             colors = self.colors
 
-
-        ax=self.ax
         uncert_label = True
         for i, (name, hist) in enumerate(self.hists.items()):
             if histtype == "errorbar":
@@ -205,6 +228,34 @@ class HistogramCanvas(HistogramBase):
             self.colors = plt.cm.gist_earth(np.flip(np.linspace(0.1,0.75,len(self.hists))))
         else:
             self.colors = plt.cm.gist_earth(np.linspace(0.1,0.75,len(self.hists)))
+
+    def pull_plot(self, ax, hist_name, nom_hist_name, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None):
+        hist = self.hists[hist_name]
+        nom_hist = self.hists[nom_hist_name]
+        bin_centers = hist.bin_centers
+        bin_edges = hist.bin_edges
+        bins = hist.size
+        if ratio:
+            plot = hist.entries/nom_hist.entries
+            ax.plot(bin_centers,[1]*bins, color='black', ls="-")
+            if not ylabel:
+                ylabel = r"$\mathbf{\frac{"+hist.name.replace("_","\_").replace(" ","\;")+r"}{"+nom_hist.name.replace("_","\_").replace(" ","\;")+r"}}$"
+        else:
+            plot = (hist.entries-nom_hist.entries)/nom_hist.entries
+            ax.plot(bin_centers,[0]*bins, color='black', ls="-")
+            if not ylabel:
+                hist_label = hist.name.replace("_","\_").replace(" ","\;")
+                nom_hist_label = nom_hist.name.replace("_","\_").replace(" ","\;")
+                ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
+        #plot_err = np.sqrt((histErr/nomHist)**2+(nomHistErr*hist/nomHist**2)**2-2*hist/nomHist**3*histErr*nomHistErr*corr)
+        plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
+        ax.errorbar(bin_centers, plot, yerr=plot_err, fmt='o--', color=color, markersize='2.8', elinewidth=1)
+        ax.set_xlim(bin_edges[0], bin_edges[-1])
+        if ylim:
+            ax.set_ylim(ylim)
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel(xlabel)
+
 
 
 class StackedHistogram(HistogramCanvas):
