@@ -34,13 +34,20 @@ class Histogram:
             self._update_bins()
 
         else:
-            if not "range" in kwargs:
-                kwargs["range"] = (np.min(data), np.max(data))
             if not "bins" in kwargs:
                 kwargs["bins"] = 50
-            kwargs["bins"] = np.concatenate([[-np.inf],
+            if type(kwargs["bins"]) is int:
+                if not "range" in kwargs:
+                    if np.min(data) == np.max(data):
+                        kwargs["range"] = (data[0]-1, data[0]+1)
+                    else:
+                        kwargs["range"] = (np.min(data), np.max(data))
+                kwargs["bins"] = np.concatenate([[-np.inf],
                                             np.linspace(*kwargs["range"], kwargs["bins"]+1),
                                             [np.inf]])
+            else:
+                kwargs["bins"] = np.concatenate([[-np.inf],kwargs["bins"],[np.inf]])
+
             np_hist = np.histogram(data, weights=self.weights, **kwargs)
             self.bin_counts = np_hist[0]
             self.bin_edges = np_hist[1]
@@ -143,11 +150,18 @@ class HistogramCanvas(HistogramBase):
             self.unit = hist.unit
             self.bins = hist.bins
             self.range = hist.range
+            self.size = self.bin_centers.size
         else:
             assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
         if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
             raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} not compatible with desired luminosity {self.lumi}")
         self.hists[hist.name] = hist
+        self.__update()
+
+
+    def __update(self):
+        pass
+
 
     def create_histogram(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
         """Create a histogram from data and add it to the stack"""
@@ -189,14 +203,14 @@ class HistogramCanvas(HistogramBase):
         uncert_label = True
         for i, (name, hist) in enumerate(self.hists.items()):
             if histtype == "errorbar":
-                ax.errorbar(self.bin_centers, hist.bin_counts, yerr=np.sqrt(hist.bin_counts), label=name, **self.b2fig.errorbar_args)
+                ax.errorbar(self.bin_centers, hist.entries, yerr=hist.err, label=name, **self.b2fig.errorbar_args)
             elif histtype == "step":
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
-                y = np.concatenate([[0], hist.bin_counts, [0]])
+                y = np.concatenate([[0], hist.entries, [0]])
                 ax.step(x, y, label=name, lw=0.9, color=colors[i])
-                uncert = np.sqrt(hist.bin_counts)
+                uncert = hist.err
                 bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
-                ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.bin_counts-uncert,
+                ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
                        edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
                 if uncert_label: uncert_label = False
             else:
@@ -237,12 +251,12 @@ class HistogramCanvas(HistogramBase):
         bins = hist.size
         if ratio:
             plot = hist.entries/nom_hist.entries
-            ax.plot(bin_centers,[1]*bins, color='black', ls="-")
+            ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
             if not ylabel:
                 ylabel = r"$\mathbf{\frac{"+hist.name.replace("_","\_").replace(" ","\;")+r"}{"+nom_hist.name.replace("_","\_").replace(" ","\;")+r"}}$"
         else:
             plot = (hist.entries-nom_hist.entries)/nom_hist.entries
-            ax.plot(bin_centers,[0]*bins, color='black', ls="-")
+            ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
             if not ylabel:
                 hist_label = hist.name.replace("_","\_").replace(" ","\;")
                 nom_hist_label = nom_hist.name.replace("_","\_").replace(" ","\;")
@@ -257,9 +271,21 @@ class HistogramCanvas(HistogramBase):
         ax.set_xlabel(xlabel)
 
 
+    def any(self):
+        """Check if any hitograms have already been added."""
+        if len(self.hists) > 0:
+            return True
+        else:
+            return False
+
+
 
 class StackedHistogram(HistogramCanvas):
     """Class to aggregate the Histogram objects and stack them."""
+
+    def add_histogram(self, hist):
+        super().add_histogram(hist)
+        self.__update()
 
     def plot(self, dpi=90, **kwargs):
         """Plot the stacked histogram"""
@@ -312,16 +338,26 @@ class StackedHistogram(HistogramCanvas):
         self.b2fig.shift_offset_text_position_old(ax)
 
 
-
-
     def get_stat_uncert(self):
         """Calculate the stacked uncertainty of the stacked histogram using sqrt(sum(sum(lumi_scale_1**2), sum(lumi_scale_2**2), ..., sum(lumi_scale_n**2)))
         of the n histograms."""
         uncert = np.zeros(self.bin_centers.size)
         for name, hist in self.hists.items():
             # sigma = n2/lumi_scale *lumi_scale**2
-            uncert += hist.bin_counts/hist.lumi_scale*hist.lumi_scale**2
+            uncert += hist.entries/hist.lumi_scale*hist.lumi_scale**2
         return np.sqrt(uncert)
+
+
+    def get_stacked_entries(self):
+        """Get the sum of the stacked entries per bin."""
+        entries = np.zeros(self.bin_centers.size)
+        for name, hist in self.hists.items():
+            entries += hist.entries
+        return entries
+
+    def __update(self):
+        self.entries = self.get_stacked_entries()
+        self.err = self.get_stat_uncert()
 
 
 class StackedDataHistogram(StackedHistogram):
