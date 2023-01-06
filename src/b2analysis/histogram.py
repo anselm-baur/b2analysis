@@ -261,7 +261,6 @@ class HistogramCanvas(HistogramBase):
                 hist_label = hist.name.replace("_","\_").replace(" ","\;")
                 nom_hist_label = nom_hist.name.replace("_","\_").replace(" ","\;")
                 ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
-        #plot_err = np.sqrt((histErr/nomHist)**2+(nomHistErr*hist/nomHist**2)**2-2*hist/nomHist**3*histErr*nomHistErr*corr)
         plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
         ax.errorbar(bin_centers, plot, yerr=plot_err, fmt='o--', color=color, markersize='2.8', elinewidth=1)
         ax.set_xlim(bin_edges[0], bin_edges[-1])
@@ -300,7 +299,7 @@ class StackedHistogram(HistogramCanvas):
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, reverse_colors=False, log=False):
+    def plot_ax(self, ax, reverse_colors=False, log=False, ylim=None):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
             self.b2fig = B2Figure()
@@ -331,7 +330,11 @@ class StackedHistogram(HistogramCanvas):
 
         if log:
             ax.set_yscale("log")
-            ax.set_ylim((0.5, ax.get_ylim()[1]))
+            if not ylim:
+                ax.set_ylim((0.5, ax.get_ylim()[1]))
+        if ylim:
+            ax.set_ylim(ylim)
+
         ax.legend()
         self.add_labels(ax=ax)
         ax.set_xlim((*self.range))
