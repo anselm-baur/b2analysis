@@ -126,7 +126,7 @@ class HistogramCanvas(HistogramBase):
     """Class to aggregate the Histogram objects and plot them
     for comparison."""
 
-    def __init__(self, lumi, var="", simulation=True, unit="", mc_campaign="", is_simulation=True, **kwargs):
+    def __init__(self, lumi, var="", simulation=True, unit="", additional_info="", is_simulation=True, **kwargs):
         super().__init__(**kwargs)
         self.lumi = lumi
         self.var = var
@@ -136,11 +136,13 @@ class HistogramCanvas(HistogramBase):
         self.bin_centers = np.array([])
         self.description = {"luminosity": self.lumi,
                             "simulation": is_simulation,
-                            "additional_info": mc_campaign}
+                            "additional_info": additional_info}
 
         self.b2fig = None
         self.fig = None
         self.ax = None
+
+        self.signals = 0
 
     def add_histogram(self, hist):
         """Add a histogram to the canvas."""
@@ -156,6 +158,8 @@ class HistogramCanvas(HistogramBase):
         if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
             raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} not compatible with desired luminosity {self.lumi}")
         self.hists[hist.name] = hist
+        if hist.is_signal:
+            self.signals += 1
         self.__update()
 
 
@@ -237,11 +241,20 @@ class HistogramCanvas(HistogramBase):
         ax.set_ylabel(ylabel)
 
 
-    def color_scheme(self, reverse=False):
-        if reverse:
-            self.colors = plt.cm.gist_earth(np.flip(np.linspace(0.1,0.75,len(self.hists))))
+    def color_scheme(self, reverse=False, exclude_signals=True):
+        cm = plt.cm.gist_earth
+        #cm = plt.cm.seismic
+        cm_low = 0.1
+        cm_high = 0.8
+
+        if exclude_signals:
+            nhists = len(self.hists)-self.signals
         else:
-            self.colors = plt.cm.gist_earth(np.linspace(0.1,0.75,len(self.hists)))
+            nhists = len(self.hists)
+        linspace = np.linspace(cm_low,cm_high,nhists)
+        self.colors = cm(np.flip(linspace) if reverse else linspace)
+        self.signal_color = plt.cm.seismic(0.9)
+
 
     def pull_plot(self, ax, hist_name, nom_hist_name, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None):
         hist = self.hists[hist_name]
@@ -299,7 +312,7 @@ class StackedHistogram(HistogramCanvas):
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, reverse_colors=False, log=False, ylim=None):
+    def plot_ax(self, ax, reverse_colors=False, log=False, ylim=None, uncert_color="black"):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
             self.b2fig = B2Figure()
@@ -311,7 +324,7 @@ class StackedHistogram(HistogramCanvas):
         stack = np.zeros(self.bin_centers.size)
         i=0
         for name, hist in self.hists.items():
-            color = "red" if hist.is_signal else colors[i]
+            color = self.signal_color if hist.is_signal else colors[i]
             #print(f"stack {name}")
             #ax.plot(self.bin_centers, stack+hist.bin_counts, drawstyle="steps", color=colors[i], linewidth=0.5)
             #ax.fill_between(self.bin_centers, stack, stack+hist.bin_counts, label=name, step="mid",
@@ -326,7 +339,7 @@ class StackedHistogram(HistogramCanvas):
 
         uncert = self.get_stat_uncert()
         ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=stack-uncert,
-                edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc.")
+                edgecolor=uncert_color,hatch="///////", fill=False, lw=0,label="MC stat. unc.")
 
         if log:
             ax.set_yscale("log")
