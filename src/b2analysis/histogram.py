@@ -2,8 +2,9 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from b2style import B2Figure
+import copy
 
-class HistogramBase:
+class CanvasBase:
 
     def __init__(self, output_dir = "") -> None:
         self.output_dir = output_dir
@@ -13,19 +14,16 @@ class HistogramBase:
     def savefig(self, filename):
         self.fig.savefig(os.path.join(self.output_dir, filename))
 
-class Histogram:
-    """Analysis Histogram Class."""
 
-    def __init__(self, name, data, lumi, lumi_scale=1, var="", unit="", is_signal=False, overflow_bin=False, **kwargs):
-        self.is_signal = is_signal
+class HistogramBase:
+    def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, **kwargs):
         self.name = name
         self.var = var
-        self.lumi = lumi
-        self.lumi_scale = lumi_scale # basically the weight of each event
+        self.scale = scale # basically the weight of each event
         self.unit = unit
         self.overflow_bin = overflow_bin
 
-        self.weights = np.full(data.size, self.lumi_scale)
+        self.weights = np.full(data.size, self.scale)
 
         if not overflow_bin:
             np_hist = np.histogram(data, weights=self.weights, **kwargs)
@@ -55,15 +53,12 @@ class Histogram:
             self._trim_hist(-2,-1)
 
         self.size = self.bin_centers.size
+        self.update_hist()
+
+
+    def update_hist(self):
         self.err = self.stat_uncert()
         self.entries = self.bin_counts
-
-
-
-    def _update_bins(self):
-        self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
-        self.range = (self.bin_edges[0], self.bin_edges[-1])
-        self.bins = self.bin_centers.size
 
 
     def _trim_hist(self, a, b):
@@ -80,6 +75,79 @@ class Histogram:
             self.bin_counts = np.concatenate([self.bin_counts[:a+1], self.bin_counts[b+1:]])
             self.bin_edges = np.concatenate([self.bin_edges[:a+1], self.bin_edges[b+1:]])
         self._update_bins()
+
+
+    def _update_bins(self):
+        self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
+        self.range = (self.bin_edges[0], self.bin_edges[-1])
+        self.bins = self.bin_centers.size
+
+
+
+    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True):
+        if not fig and not ax:
+            fig, ax = plt.subplots(ncols=1, nrows=1, dpi=dpi)
+
+        if histtype == "errorbar":
+            ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.stat_uncert(), label=self.name,)
+        elif histtype == "step":
+            x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
+            y = np.concatenate([[0], self.bin_counts, [0]])
+            ax.step(x, y, label=self.name, lw=0.9)
+            uncert = np.sqrt(self.bin_counts)
+            bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
+            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.bin_counts-uncert,
+                    edgecolor="grey",hatch="///////", fill=False, lw=0,label="stat. unc." if uncert_label else "")
+            if uncert_label: uncert_label = False
+        unit = f" in {self.unit}"
+        ax.set_xlim((*self.range))
+        ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
+        ax.set_ylabel("events")
+        ax.legend()
+
+        return fig, ax
+
+    def stat_uncert(self):
+        """relative error stays constant with scaling:
+        sqrt(n_1) / n_1 = x / n_2
+        -> x = sqrt(n_1) * n_2 / n_1
+             = lumi_scale * sqrt(n_1)
+
+        we need to calculate the bin_contents without weights:
+        n_2 = n_1 * lumi_scale
+        -> n_1 = n_2 / lumi_scale
+
+        so the scaled uncertainty is:
+        x = sigma = lumi_scale * sqrt(n_2) / sqrt(lumi_scale)
+        """
+        return np.sqrt(self.bin_counts)*(self.scale**(3/2))
+
+
+    def __sub__(self, other):
+        self.check_compatibility(other)
+        diff_hist = copy.deepcopy(self)
+        diff_hist.bin_counts -= other.bin_counts
+        diff_hist.scale = 1
+        diff_hist.weights = None
+        diff_hist.name += " - " + other.name
+        diff_hist.update_hist()
+        return diff_hist
+
+
+    def check_compatibility(self, other):
+        assert np.array_equal(np.array(other.bin_edges, dtype=np.float32), self.bin_edges.astype(np.float32)), "Hist bin edges not compatible!"
+        assert self.unit == other.unit, "Hist units not compatible!"
+
+
+
+class Histogram(HistogramBase):
+    """Analysis Histogram Class."""
+
+    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
+        super().__init__(name=name, data=data, scale=lumi_scale **kwargs)
+        self.is_signal = is_signal
+        self.lumi = lumi
+        self.lumi_scale = lumi_scale # basically the weight of each event
 
 
     def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True):
@@ -106,23 +174,8 @@ class Histogram:
 
         return fig, ax
 
-    def stat_uncert(self):
-        """relative error stays constant with scaling:
-        sqrt(n_1) / n_1 = x / n_2
-        -> x = sqrt(n_1) * n_2 / n_1
-             = lumi_scale * sqrt(n_1)
 
-        we need to calculate the bin_contents without weights:
-        n_2 = n_1 * lumi_scale
-        -> n_1 = n_2 / lumi_scale
-
-        so the scaled uncertainty is:
-        x = sigma = lumi_scale * sqrt(n_2) / sqrt(lumi_scale)
-        """
-        return np.sqrt(self.bin_counts)*(self.lumi_scale**(3/2))
-
-
-class HistogramCanvas(HistogramBase):
+class HistogramCanvas(CanvasBase):
     """Class to aggregate the Histogram objects and plot them
     for comparison."""
 
@@ -143,8 +196,10 @@ class HistogramCanvas(HistogramBase):
         self.ax = None
 
         self.signals = 0
+        self.labels = {}
+        self.colors = {}
 
-    def add_histogram(self, hist):
+    def add_histogram(self, hist, label=True, color=None):
         """Add a histogram to the canvas."""
         if not self.bin_edges.any():
             self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
@@ -158,6 +213,9 @@ class HistogramCanvas(HistogramBase):
         if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
             raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} not compatible with desired luminosity {self.lumi}")
         self.hists[hist.name] = hist
+        self.labels[hist.name] = label
+        if color:
+            self.colors[hist.name] = color
         if hist.is_signal:
             self.signals += 1
         self.__update()
@@ -211,7 +269,7 @@ class HistogramCanvas(HistogramBase):
             elif histtype == "step":
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
                 y = np.concatenate([[0], hist.entries, [0]])
-                ax.step(x, y, label=name, lw=0.9, color=colors[i])
+                ax.step(x, y, label=name if self.labels[name] else None, lw=0.9, color=colors[i])
                 uncert = hist.err
                 bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
                 ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
