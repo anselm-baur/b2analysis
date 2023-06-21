@@ -12,6 +12,8 @@ class CanvasBase:
         self.ax = None
 
     def savefig(self, filename):
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
         self.fig.savefig(os.path.join(self.output_dir, filename))
 
     def copy(self):
@@ -21,6 +23,9 @@ class CanvasBase:
 
 class HistogramBase:
     def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, **kwargs):
+        """Creates a HistogramBase object from either data points wich gets histogramed (is_hist=False) or form already binned data
+        (is_hist=True).
+        """
         self.name = name
         self.var = var
         self.scale = scale # basically the weight of each event
@@ -41,6 +46,7 @@ class HistogramBase:
                 self.entries = self.bin_counts
             else:
                 self.update_hist()
+            self.size = self.bin_counts.size
 
         else:
 
@@ -105,7 +111,7 @@ class HistogramBase:
 
 
 
-    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True):
+    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
         if not fig and not ax:
             fig, ax = plt.subplots(ncols=1, nrows=1, dpi=dpi)
 
@@ -124,6 +130,8 @@ class HistogramBase:
         ax.set_xlim((*self.range))
         ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
         ax.set_ylabel("events")
+        if log:
+            ax.set_yscale("log")
         ax.legend()
 
         return fig, ax
@@ -141,7 +149,7 @@ class HistogramBase:
         so the scaled uncertainty is:
         x = sigma = lumi_scale * sqrt(n_2) / sqrt(lumi_scale)
         """
-        return np.sqrt(self.bin_counts)*(self.scale**(3/2))
+        return np.sqrt(self.bin_counts)*(self.scale**(1/2))
 
 
     def __sub__(self, other):
@@ -186,7 +194,7 @@ class Histogram(HistogramBase):
         self.lumi_scale = lumi_scale # basically the weight of each event
 
 
-    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True):
+    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
         b2fig = B2Figure()
         if not fig and not ax:
             fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
@@ -206,6 +214,8 @@ class Histogram(HistogramBase):
         ax.set_xlim((*self.range))
         ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
         ax.set_ylabel("events")
+        if log:
+            ax.set_yscale("log")
         ax.legend()
 
         return fig, ax
@@ -313,7 +323,10 @@ class HistogramCanvas(CanvasBase):
             elif histtype == "step":
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
                 y = np.concatenate([[0], hist.entries, [0]])
-                ax.step(x, y, label=label, lw=0.9, color=colors[name])
+                if type(colors) == dict:
+                    ax.step(x, y, label=label, lw=0.9, color=colors[name])
+                else:
+                    ax.step(x, y, label=label, lw=0.9, color=colors[i])
                 uncert = hist.err
                 bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
                 ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
