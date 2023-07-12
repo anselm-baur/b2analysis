@@ -4,16 +4,20 @@ import matplotlib.pyplot as plt
 from b2style import B2Figure
 import copy
 
+
 class CanvasBase:
 
-    def __init__(self, output_dir = "") -> None:
+    def __init__(self, name="hist_canvas", output_dir = "") -> None:
         self.output_dir = output_dir
+        self.name=name
         self.fig = None
         self.ax = None
 
-    def savefig(self, filename):
+    def savefig(self, filename=""):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
+        if not filename:
+            filename = f"{self.name}.pdf"
         self.fig.savefig(os.path.join(self.output_dir, filename))
 
     def copy(self):
@@ -187,8 +191,8 @@ class HistogramBase:
 class Histogram(HistogramBase):
     """Analysis Histogram Class."""
 
-    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
-        super().__init__(name=name, data=data, scale=lumi_scale, **kwargs)
+    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, **kwargs):
+        super().__init__(name=name, data=data, scale=lumi_scale, is_hist=is_hist, **kwargs)
         self.is_signal = is_signal
         self.lumi = lumi
         self.lumi_scale = lumi_scale # basically the weight of each event
@@ -225,7 +229,7 @@ class HistogramCanvas(CanvasBase):
     """Class to aggregate the Histogram objects and plot them
     for comparison."""
 
-    def __init__(self, lumi, var="", simulation=True, unit="", additional_info="", is_simulation=True, **kwargs):
+    def __init__(self, lumi, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
         super().__init__(**kwargs)
         self.lumi = lumi
         self.var = var
@@ -235,7 +239,8 @@ class HistogramCanvas(CanvasBase):
         self.bin_centers = np.array([])
         self.description = {"luminosity": self.lumi,
                             "simulation": is_simulation,
-                            "additional_info": additional_info}
+                            "additional_info": additional_info,
+                            "preliminary": not is_simulation and is_preliminary}
 
         self.b2fig = None
         self.fig = None
@@ -250,7 +255,8 @@ class HistogramCanvas(CanvasBase):
         if not self.bin_edges.any():
             self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
             self.bin_centers = hist.bin_centers
-            self.unit = hist.unit
+            if not self.unit and hist.unit:
+                self.unit = hist.unit
             self.bins = hist.bins
             self.range = hist.range
             self.size = self.bin_centers.size
@@ -439,9 +445,28 @@ class HistogramCanvas(CanvasBase):
 class StackedHistogram(HistogramCanvas):
     """Class to aggregate the Histogram objects and stack them."""
 
+    def __init__(self, lumi, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
+        super().__init__(lumi, var, unit, additional_info, is_simulation, is_preliminary, **kwargs)
+        self.data_hist = None
+        self.errorbar_args = {"fmt":'o',
+                              "color": "black",
+                              "markersize": 2.8,
+                              "elinewidth": 1
+                              }
+
     def add_histogram(self, hist):
         super().add_histogram(hist)
         self.__update()
+
+
+    def add_data_histogram(self, hist):
+        if not self.bin_edges.any():
+            self.bin_edges = hist.bin_edges
+            self.bin_centers = hist.bin_centers
+        else:
+            assert np.array_equal(hist.bin_edges, self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
+        self.data_hist = hist
+
 
     def plot(self, dpi=90, **kwargs):
         """Plot the stacked histogram"""
@@ -456,7 +481,28 @@ class StackedHistogram(HistogramCanvas):
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, reverse_colors=False, log=False, ylim=None, uncert_color="black"):
+    def pull_plot(self, dpi=90, figsize=(6,6), pull_args={}, **kwargs):
+        """Plot stacked histogram and a pull distribution.
+        """
+        self.b2fig = B2Figure(auto_description=False)
+        self.fig, ax = self.b2fig.create(ncols=1, nrows=2, dpi=dpi, figsize=figsize, gridspec_kw={'height_ratios': [2, 1]})
+        self.ax = ax[0]
+        self.b2fig.add_descriptions(ax=self.ax, **self.description)
+        self.ax_pull = ax[1]
+        #move the xlabel to the pull plot
+
+        self.ax.set_xticklabels([])
+        self.fig.subplots_adjust(hspace=0.05)
+
+        self.plot_ax(self.ax, **kwargs)
+        self.b2fig.shift_offset_text_position(self.ax)
+        self.add_labels(ax=self.ax)
+        self.plot_pull_ax(self.ax_pull, pull_args=pull_args, **kwargs)
+
+        return self.fig, ax
+
+
+    def plot_ax(self, ax, reverse_colors=False, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.", **kwargs):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
             self.b2fig = B2Figure()
@@ -476,14 +522,18 @@ class StackedHistogram(HistogramCanvas):
             #ax.fill_between(self.bin_centers, stack, stack+hist.bin_counts, label=name, step="mid",
             #                linewidth=0, linestyle="-", color=color)
             ax.bar(x=self.bin_centers, height=hist.bin_counts, width=bin_width, bottom=stack,
-                color=color, lw=0,label=name)
+                color=color, edgecolor=color, lw=0.1,label=name)
 
             stack += hist.bin_counts
             i += 1
 
         uncert = self.get_stat_uncert()
         ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=stack-uncert,
-                edgecolor=uncert_color,hatch="///////", fill=False, lw=0,label="MC stat. unc.")
+                edgecolor=uncert_color,hatch="///////", fill=False, lw=0,label=uncert_label)
+
+        if self.data_hist:
+            ax.errorbar(self.data_hist.bin_centers, self.data_hist.entries, yerr=self.data_hist.stat_uncert(),
+                        label="data", **self.errorbar_args)
 
         if log:
             ax.set_yscale("log")
@@ -496,6 +546,31 @@ class StackedHistogram(HistogramCanvas):
         self.add_labels(ax=ax)
         ax.set_xlim((*self.range))
         self.b2fig.shift_offset_text_position_old(ax)
+
+
+    def plot_pull_ax(self, ax, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, pull_args={}, **kwargs):
+        data_hist = self.data_hist
+        bin_centers = data_hist.bin_centers
+        bin_edges = data_hist.bin_edges
+
+        if ratio:
+            plot = self.get_stacked_entries()/data_hist.entries
+            ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
+            if not ylabel:
+                ylabel = r"$\mathbf{\frac{MC}{data}}$"
+        else:
+            plot = (self.get_stacked_entries().entries-data_hist.entries)/data_hist.entries
+            ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
+            if not ylabel:
+                ylabel = r"$\mathbf{\frac{mc-data}{data}}$"
+        plot_err = np.sqrt((self.get_stat_uncert()/data_hist.entries)**2+(data_hist.err*self.get_stacked_entries()/data_hist.entries**2)**2-2*self.get_stacked_entries()/data_hist.entries**3*self.get_stat_uncert()*data_hist.err*corr)
+        ax.errorbar(bin_centers, plot, yerr=plot_err, **self.errorbar_args)
+
+        ax.set_xlim(bin_edges[0], bin_edges[-1])
+        if ylim:
+            ax.set_ylim(ylim)
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel(xlabel)
 
 
     def get_stat_uncert(self):
@@ -536,3 +611,58 @@ class StackedDataHistogram(StackedHistogram):
 
     def create_data_histogram(self,  name, data, lumi, lumi_scale=1, **kwargs):
         self.add_data_histogram(Histogram(name, data, lumi, lumi_scale=1, **kwargs))
+
+
+
+
+def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additional_info="", output_dir="", pull_ylim=(0.8,1.2), savefig=False):
+    """Creates a histogramCanvos object from noth histograms with a pull plot.
+
+    :param name: name of the histogram canvas
+    :type name: str
+    :param hist_1: first histogram
+    :type hist_1: Histogram
+    :param hist_2: second histogram
+    :type hist_2: Histogram
+    :param name_1: name/label of the first histogram, if None the name is extracted from the Histogram object
+    :type name_1: str, optional
+    :param name_2: name/label of the second histogram, if None the name is extracted from the Histogram object
+    :type name_2: str, optional
+    :param additional_info: text which show up in the top region of the plot, defaults to ""
+    :type additional_info: str, optional
+    :param output_dir: directory wich is used to save the plot, defaults to ""
+    :type output_dir: str, optional
+    :param pull_ylim: range of the y axis of the pull pot, defaults to (0.8,1.2)
+    :type pull_ylim: tuple, optional
+    :param savefig: save the resulting plot to the output drectory, defaults to False
+    :type savefig: boolean, optional
+    :return: The resulting HistogramCanvas from both histograms
+    :rtype: HistogramCanvas
+    """
+    _hist_1 = copy.deepcopy(hist_1)
+    _hist_2 = copy.deepcopy(hist_2)
+    if not name_1:
+        name_1 = _hist_1.name
+    else:
+        _hist_1.name = name_1
+        _hist_1.label = name_1
+    if not name_2:
+        name_2 = _hist_2.name
+    else:
+        _hist_2.name = name_2
+        _hist_2.label = name_2
+
+    hist_canvas = HistogramCanvas(lumi=_hist_1.lumi, name=name, output_dir=output_dir)
+    hist_canvas.add_histogram(_hist_1)
+    hist_canvas.add_histogram(_hist_2)
+
+    pull_args = {"hist_name": name_1,
+                "nom_hist_name": name_2,
+                "ratio": True,
+                "ylim": pull_ylim}
+    unit_label = r" in $\mathbf{" + _hist_1.unit + r"}$" if _hist_1.unit else ""
+    if additional_info:
+        hist_canvas.description["additional_info"] = additional_info
+    fig, ax = hist_canvas.plot(xlabel=f"{_hist_1.var}" + unit_label, histtype="step", figsize=(6,5),
+                    log=True, colors=["blue", "red"], pull_args=pull_args)
+    return hist_canvas, fig, ax
