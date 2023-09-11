@@ -407,14 +407,14 @@ class HistogramCanvas(CanvasBase):
             if ratio:
                 plot = hist.entries/nom_hist.entries
                 if pull_bar:
-                    plot_pull_bars(plot-1, 1)
+                    self.plot_pull_bars(ax, bin_edges, plot-1, 1)
                 ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
                 if not ylabel:
                     ylabel = r"$\mathbf{\frac{"+hist.name.replace("_","\_").replace(" ","\;")+r"}{"+nom_hist.name.replace("_","\_").replace(" ","\;")+r"}}$"
             else:
                 plot = (hist.entries-nom_hist.entries)/nom_hist.entries
                 if pull_bar:
-                    plot_pull_bars(plot)
+                    self.plot_pull_bars(ax, bin_edges, plot)
                 ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
                 if not ylabel:
                     hist_label = hist.name.replace("_","\_").replace(" ","\;")
@@ -443,6 +443,12 @@ class HistogramCanvas(CanvasBase):
         ax.set_xlabel(xlabel)
 
 
+    def plot_pull_bars(self, ax, bin_edges, y, bottom=0, color="lightgrey"):
+            """Plot grey bars between bottom and y"""
+            widths = bin_edges[1:]-bin_edges[:-1]
+            ax.bar(bin_edges[:-1], y, widths, align="edge", color=color, bottom=bottom, zorder=0)
+
+
     def any(self):
         """Check if any hitograms have already been added."""
         if len(self.hists) > 0:
@@ -460,8 +466,8 @@ class StackedHistogram(HistogramCanvas):
         self.data_hist = None
         self.errorbar_args = {"fmt":'o',
                               "color": "black",
-                              "markersize": 2.8,
-                              "elinewidth": 1
+                              "markersize": 2.2,
+                              "elinewidth": 0.5
                               }
 
     def add_histogram(self, hist):
@@ -481,6 +487,29 @@ class StackedHistogram(HistogramCanvas):
         else:
             assert np.array_equal(hist.bin_edges, self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
         self.data_hist = hist
+
+    def get_hist(self, name=""):
+        """Return the stacked entries as histogram
+
+        :return: stacked histogram
+        :rtype: Histogram
+        """
+        if not name:
+            name=self.name
+        return Histogram(name, self.entries, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True)
+
+    def get_data_hist(self, name=""):
+        """Return the data histogram
+
+        :return: data point histogram
+        :rtype: Histogram
+        """
+        if name:
+            data_hist = copy.deepcopy(self.data_hist)
+            data_hist.name=name
+            return data_hist
+        else:
+            return self.data_hist
 
 
     def plot(self, dpi=90, **kwargs):
@@ -571,11 +600,13 @@ class StackedHistogram(HistogramCanvas):
         if ratio:
             plot = self.get_stacked_entries()/data_hist.entries
             ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
+            self.plot_pull_bars(ax, bin_edges, plot-1, 1)
             if not ylabel:
                 ylabel = r"$\mathbf{\frac{MC}{data}}$"
         else:
             plot = (self.get_stacked_entries().entries-data_hist.entries)/data_hist.entries
             ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
+            self.plot_pull_bars(ax, bin_edges, plot, 0)
             if not ylabel:
                 ylabel = r"$\mathbf{\frac{mc-data}{data}}$"
         plot_err = np.sqrt((self.get_stat_uncert()/data_hist.entries)**2+(data_hist.err*self.get_stacked_entries()/data_hist.entries**2)**2-2*self.get_stacked_entries()/data_hist.entries**3*self.get_stat_uncert()*data_hist.err*corr)
