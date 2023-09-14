@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-from b2style import B2Figure
+from b2style.b2figure import B2Figure
 import copy
 
 
@@ -26,7 +26,7 @@ class CanvasBase:
 
 
 class HistogramBase:
-    def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, **kwargs):
+    def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, weights=np.array([]), **kwargs):
         """Creates a HistogramBase object from either data points wich gets histogramed (is_hist=False) or form already binned data
         (is_hist=True).
         """
@@ -37,7 +37,14 @@ class HistogramBase:
         self.label = label if label else name
         self.overflow_bin = overflow_bin
 
-        self.weights = np.full(data.size, self.scale)
+        if not weights.any():
+            self.weights = np.full(data.size, self.scale)
+        else:
+            if not weights.size == data.size:
+                raise ValueError("data and weigts not same size!")
+            self.weights = weights * scale
+
+
 
         if is_hist:
             if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
