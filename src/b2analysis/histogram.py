@@ -45,7 +45,7 @@ class HistogramBase:
             self.weights = weights * scale
 
 
-
+        # We create a Histogram from an existing Histogram
         if is_hist:
             if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
                 raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
@@ -54,11 +54,13 @@ class HistogramBase:
             self._update_bins()
             if "err" in kwargs:
                 self.err = kwargs["err"]
+                self.stat_uncert = None #omit wrong uncertainty calculation
                 self.entries = self.bin_counts
             else:
                 self.update_hist()
             self.size = self.bin_counts.size
 
+        # We create a new Histogram from a data sample
         else:
 
             if not overflow_bin:
@@ -66,8 +68,12 @@ class HistogramBase:
                 self.bin_counts = np_hist[0]
                 self.bin_edges = np_hist[1]
                 self._update_bins()
+                self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
 
             else:
+                #first add to the first and last bins bins which go to -/+ inf
+                #then we trim the histograms and ad at content of the first and last inf bins
+                #to the neighbor bins and cut the inf bins out
                 if not "bins" in kwargs:
                     kwargs["bins"] = 50
                 if type(kwargs["bins"]) is int:
@@ -85,6 +91,7 @@ class HistogramBase:
                 np_hist = np.histogram(data, weights=self.weights, **kwargs)
                 self.bin_counts = np_hist[0]
                 self.bin_edges = np_hist[1]
+                self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
                 self._trim_hist(0,1)
                 self._trim_hist(-2,-1)
 
@@ -92,25 +99,60 @@ class HistogramBase:
             self.update_hist()
 
 
+    def calc_weighted_uncert(self, data, weights, bin_edges):
+        """Caluculate the statistical uncertainty of each bin regarding the weighted data
+
+        :param data: data set from which the histogram is built
+        :type data: numpy array of length n
+        :param weights: weights per data event
+        :type weights: numpy array of length n
+        :param bin_edges: bin edges of the histogram
+        :type bin_edges: numpy array of length k
+        :return: statistical uncertainty per bin
+        :rtype: nunmpy array of length k-1
+        """
+        w_uncert = []
+        for lower_edge, upper_edge in zip(bin_edges[0:-1], bin_edges[1:]):
+            if upper_edge != bin_edges[-1]:
+                w_i = weights[(data>=lower_edge) & (data<upper_edge)]
+            else:
+                w_i = weights[(data>=lower_edge) & (data<=upper_edge)]
+            w_uncert+= [np.sqrt(np.sum(w_i**2))]
+        return np.array(w_uncert)
+
+
+
+
+
     def update_hist(self):
         """Recalculate the uncertainty and set the entries atribute.
         """
-        self.err = self.stat_uncert()
+        #self.err = self.stat_uncert()
         self.entries = self.bin_counts
 
 
     def _trim_hist(self, a, b):
+        # start with first bin
         if a == 0:
+            #add bin content and error of the cut bins to the first new bin b
             self.bin_counts[b] = np.sum(self.bin_counts[:b+1])
+            self.err[b] = np.sqrt(np.sum(self.err[:b+1]**2))
             self.bin_counts = self.bin_counts[b:]
+            self.err = self.err[b:]
             self.bin_edges = self.bin_edges[b:]
+        # end with last bin
         elif b == -1:
             self.bin_counts[a] = np.sum(self.bin_counts[a:])
+            self.err[a] = np.sqrt(np.sum(self.err[a:]**2))
             self.bin_counts = self.bin_counts[:a+1]
+            self.err = self.err[:a+1]
             self.bin_edges = self.bin_edges[:a+1]
+        # s.th. in the center is cut out
         else:
             self.bin_counts[a] = np.sum(self.bin_counts[a:b+1])
+            self.err[a] = np.sqrt(np.sum(self.err[a:b+1]**2))
             self.bin_counts = np.concatenate([self.bin_counts[:a+1], self.bin_counts[b+1:]])
+            self.err[a] = np.concatenate([self.err[:a+1], self.err[b+1:]])
             self.bin_edges = np.concatenate([self.bin_edges[:a+1], self.bin_edges[b+1:]])
         self._update_bins()
 
@@ -127,7 +169,7 @@ class HistogramBase:
             fig, ax = plt.subplots(ncols=1, nrows=1, dpi=dpi)
 
         if histtype == "errorbar":
-            ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.stat_uncert(), label=self.label,)
+            ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.err, label=self.label,)
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.bin_counts, [0]])
@@ -176,13 +218,17 @@ class HistogramBase:
 
     def __add__(self, other):
         self.check_compatibility(other)
-        diff_hist = self.copy()
-        diff_hist.bin_counts += other.bin_counts
-        diff_hist.scale = 1
-        diff_hist.weights = None
-        diff_hist.name += " + " + other.name
-        diff_hist.update_hist()
-        return diff_hist
+        add_hist = self.copy()
+        add_hist.bin_counts += other.bin_counts
+        add_hist.scale = 1
+        add_hist.weights = None
+        add_hist.name += " + " + other.name
+        add_hist.update_hist()
+        return add_hist
+
+    def __truediv__(self, other):
+        self.check_compatibility(other)
+        return np.array(self.entries)/np.array(other.entries)
 
 
     def check_compatibility(self, other):
@@ -192,6 +238,7 @@ class HistogramBase:
 
     def copy(self):
         return copy.deepcopy(self)
+
 
 
 
@@ -211,7 +258,7 @@ class Histogram(HistogramBase):
             fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
 
         if histtype == "errorbar":
-            ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.stat_uncert(), label=self.label, **b2fig.errorbar_args)
+            ax.errorbar(self.bin_centers, self.bin_counts, yerr=self.err, label=self.label, **b2fig.errorbar_args)
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.bin_counts, [0]])
@@ -230,6 +277,18 @@ class Histogram(HistogramBase):
         ax.legend()
 
         return fig, ax
+
+
+    def __str__(self):
+        ret_str  = "Histogram Object\n"
+        ret_str += "================\n"
+        ret_str += f"name: {self.name}\n"
+        ret_str += f"var: {self.var}\n"
+        ret_str += f"bins: {self.bins}\n"
+        ret_str += f"entries: {np.sum(self.entries):.0f}\n"
+        ret_str += f"weights: {np.mean(self.weights):.3f}\n"
+        ret_str += f"lumi: {self.lumi}"
+        return ret_str
 
 
 class HistogramCanvas(CanvasBase):
@@ -503,7 +562,7 @@ class StackedHistogram(HistogramCanvas):
         """
         if not name:
             name=self.name
-        return Histogram(name, self.entries, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True)
+        return Histogram(name, self.entries, var=self.var, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True)
 
     def get_data_hist(self, name=""):
         """Return the data histogram
@@ -584,7 +643,7 @@ class StackedHistogram(HistogramCanvas):
                 edgecolor=uncert_color,hatch="///////", fill=False, lw=0,label=uncert_label)
 
         if self.data_hist:
-            ax.errorbar(self.data_hist.bin_centers, self.data_hist.entries, yerr=self.data_hist.stat_uncert(),
+            ax.errorbar(self.data_hist.bin_centers, self.data_hist.entries, yerr=self.data_hist.err,
                         label="data", **self.errorbar_args)
 
         if log:
@@ -634,9 +693,10 @@ class StackedHistogram(HistogramCanvas):
         if len(self.hists) > 0:
             for name, hist in self.hists.items():
                 # sigma = n2/lumi_scale *lumi_scale**2
-                uncert += hist.entries/hist.lumi_scale*hist.lumi_scale**2
+                #uncert += hist.entries/hist.lumi_scale*hist.lumi_scale**2
+                uncert += hist.err**2 #quadratic sum of each uncertainty component
         elif len(self.hists) ==0 and self.data_hist:
-            uncert = self.data_hist.err
+            uncert = self.data_hist.err**2
         return np.sqrt(uncert)
 
 
@@ -755,3 +815,33 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
         fig.savefig(file_name)
         print(f"figure saved: {file_name}")
     return hist_canvas, fig, ax
+
+
+def reweight(data, bin_edges, reweights, weights=np.array([])):
+    """Update the weights of each event for a given data set
+
+    :param data: data set
+    :type data: list of size n
+    :param bin_edges: bin edges of a histogram where the data set is sorted into
+    :type bin_edges: list of size k
+    :param reweights: list of weights for each of the k bins which should be applied to the events
+                      in the respective bin
+    :type reweights: list of size k
+    :param weights: optional, weights which sould be already applied to each event
+    :type weights: list of size k or None
+    :return: list of the new weights
+    :rtype: list of size n
+    """
+    if not weights.any():
+        weights=np.full(data.size, 1.0)
+    for wi, bi0, bi1 in zip(reweights, bin_edges[:-1], bin_edges[1:]):
+        #first bin
+        if bi0==bin_edges[0]:
+            weights[(data<bi1)] *= wi
+        #last bin
+        elif bi1==bin_edges[-1]:
+            weights[(data>=bi0)] *= wi
+        #all bins in between
+        else:
+            weights[(data>=bi0) & (data<bi1)] *= wi
+    return weights
