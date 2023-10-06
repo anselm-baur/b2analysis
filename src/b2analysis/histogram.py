@@ -220,6 +220,7 @@ class HistogramBase:
         self.check_compatibility(other)
         add_hist = self.copy()
         add_hist.bin_counts += other.bin_counts
+        add_hist.err = np.sqrt(self.err**2 + other.err**2)
         add_hist.scale = 1
         add_hist.weights = None
         add_hist.name += " + " + other.name
@@ -289,6 +290,21 @@ class Histogram(HistogramBase):
         ret_str += f"weights: {np.mean(self.weights):.3f}\n"
         ret_str += f"lumi: {self.lumi}"
         return ret_str
+
+
+    def serialize(self):
+        """Create a serialized version of the histogram for storage in a file.
+
+        :return: the histogram content in strings and lists
+        :rtype: dict
+        """
+        ser_hist = {"name": self.name,
+                    "entries": list(self.entries),
+                    "err": list(self.err),
+                    "lumi": self.lumi,
+                    "bin_edges": list(self.bin_edges)
+                    }
+        return ser_hist
 
 
 class HistogramCanvas(CanvasBase):
@@ -527,14 +543,41 @@ class HistogramCanvas(CanvasBase):
 class StackedHistogram(HistogramCanvas):
     """Class to aggregate the Histogram objects and stack them."""
 
-    def __init__(self, lumi, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
-        super().__init__(lumi, var, unit, additional_info, is_simulation, is_preliminary, **kwargs)
+    def __init__(self, lumi, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, name="stacked_histogram", **kwargs):
+        super().__init__(lumi, var, unit, additional_info, is_simulation, is_preliminary, name=name, **kwargs)
         self.data_hist = None
         self.errorbar_args = {"fmt":'o',
                               "color": "black",
                               "markersize": 2.2,
                               "elinewidth": 0.5
                               }
+
+    @staticmethod
+    def from_serial(serial_hist):
+        """Create a StackedHistogram object from the sereial input.
+
+        :param serial_hist: serial histogram information
+        :type serial_hist: dict
+        :return: stacked histogram
+        :rtype: StackedHistogram
+        """
+        args = ["name", "var", "lumi"]
+        init_kwargs = {arg: serial_hist[arg] for arg in args}
+        stacked_hist = StackedHistogram(**init_kwargs)
+
+        for name, hist in serial_hist["hists"].items():
+            stacked_hist.add_histogram(Histogram(name, np.array(hist["entries"]), serial_hist["lumi"],
+                                                err=np.array(hist["err"]),
+                                                bins=np.array(serial_hist["bin_edges"]), is_hist=True))
+        if "data_hist" in serial_hist and serial_hist["data_hist"]:
+            stacked_hist.add_data_histogram(Histogram(serial_hist["data_hist"]["name"],
+                                                  np.array(serial_hist["data_hist"]["entries"]),
+                                                  serial_hist["lumi"],
+                                                  err=np.array(serial_hist["data_hist"]["err"]),
+                                                  bins=np.array(serial_hist["bin_edges"]), is_hist=True))
+
+        return stacked_hist
+
 
     def add_histogram(self, hist):
         super().add_histogram(hist)
@@ -714,13 +757,54 @@ class StackedHistogram(HistogramCanvas):
         self.entries = self.get_stacked_entries()
         self.err = self.get_stat_uncert()
 
-    #@property
-    #def entries(self):
-    #    return self.get_stacked_entries()
 
-    #@property
-    #def err(self):
-    #    return self.get_stat_uncert()
+    def serialize(self):
+        serial_hist = {}
+        serial_hist["name"] = self.name
+        serial_hist["var"] = self.var
+        serial_hist["lumi"] = self.lumi
+        serial_hist["bins"] = self.bins
+        serial_hist["range"] = self.range
+        serial_hist["bin_edges"] = list(self.bin_edges)
+        serial_hist["bin_centers"] = list(self.bin_centers)
+
+        serial_hist["hists"] = {}
+        for h_name, h in self.hists.items():
+            serial_hist["hists"][h_name] = {"entries": list(h.entries),
+                                            "err": list(h.err)}
+
+        if self.data_hist:
+            serial_hist["data_hist"] = {} #self.data_hist.serialize()
+        else:
+            serial_hist["data_hist"] = {}
+
+        return serial_hist
+
+
+
+    def __add__(self, other):
+        #FIXME: Check if copy or deepcopy
+        self_copy = self.copy()
+        for name, hist in other.hists.items():
+            if name in self_copy.hists:
+                this_hist = self_copy.hists[name]
+                this_hist.check_compatibility(hist)
+                this_hist.entries += hist.entries
+                #add uncertainty quadratically
+                this_hist.err = np.sqrt(this_hist.err*this_hist.err + hist.err*hist.err)
+                this_hist.scale = 1
+                this_hist.weights = None
+                this_hist.update_hist()
+            else:
+                self_copy.add_histogram(hist)
+
+        if self.data_hist and other.data_hist:
+            self_copy.data_hist += other.data_hist
+            self_copy.name = self.data_hist.name
+        elif not self.data_hist and other.data_hist:
+            self_copy.add_data_histogram(other.data_hist)
+
+        return self_copy
 
 
 class StackedDataHistogram(StackedHistogram):
