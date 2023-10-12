@@ -513,7 +513,7 @@ class StackedHistogram(HistogramCanvas):
             return self.data_hist
 
 
-    def plot(self, dpi=90, **kwargs):
+    def plot(self, dpi=90,  xlabel="", ylabel="events", **kwargs):
         """Plot the stacked histogram"""
 
         self.b2fig = B2Figure(auto_description=True, description=self.description)
@@ -521,7 +521,7 @@ class StackedHistogram(HistogramCanvas):
 
         self.plot_ax(self.ax, **kwargs)
         self.b2fig.shift_offset_text_position(self.ax)
-        self.add_labels(ax=self.ax)
+        self.add_labels(ax=self.ax, xlabel=xlabel, ylabel=ylabel)
 
         return self.fig, self.ax
 
