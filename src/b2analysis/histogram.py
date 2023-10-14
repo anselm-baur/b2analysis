@@ -62,7 +62,7 @@ class HistogramBase:
 
         # We create a new Histogram from a data sample
         else:
-
+            print(kwargs)
             if not overflow_bin:
                 np_hist = np.histogram(data, weights=self.weights, **kwargs)
                 self.bin_counts = np_hist[0]
@@ -129,6 +129,7 @@ class HistogramBase:
         """
         #self.err = self.stat_uncert()
         self.entries = self.bin_counts
+        pass
 
 
     def _trim_hist(self, a, b):
@@ -698,7 +699,7 @@ class StackedHistogram(HistogramCanvas):
 
         ax.legend()
         self.add_labels(ax=ax)
-        ax.set_xlim((*self.range))
+        ax.set_xlim(self.range)
         self.b2fig.shift_offset_text_position_old(ax)
 
 
@@ -788,6 +789,7 @@ class StackedHistogram(HistogramCanvas):
         for name, hist in other.hists.items():
             if name in self_copy.hists:
                 this_hist = self_copy.hists[name]
+                #print(f"adding {name} {this_hist.entries} + {hist.entries}")
                 this_hist.check_compatibility(hist)
                 this_hist.entries += hist.entries
                 #add uncertainty quadratically
@@ -795,7 +797,9 @@ class StackedHistogram(HistogramCanvas):
                 this_hist.scale = 1
                 this_hist.weights = None
                 this_hist.update_hist()
+                self_copy.hists[name] = this_hist
             else:
+                print("adding histogram")
                 self_copy.add_histogram(hist)
 
         if self.data_hist and other.data_hist:
@@ -804,6 +808,7 @@ class StackedHistogram(HistogramCanvas):
         elif not self.data_hist and other.data_hist:
             self_copy.add_data_histogram(other.data_hist)
 
+        self_copy.__update()
         return self_copy
 
 
