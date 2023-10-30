@@ -405,7 +405,7 @@ class HistogramCanvas(CanvasBase):
 
         return self.fig, self.ax
 
-    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, colors=[], reverse_colors=False):
+    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=[], reverse_colors=False):
         if len(colors) < 1 :
             if len(self.colors) < 1:
                 print("create colors...")
@@ -434,6 +434,10 @@ class HistogramCanvas(CanvasBase):
         ax.set_xlim((*self.range))
         if xlabel:
             ax.set_xlabel(xlabel)
+        if x_log:
+            ax.set_xscale("symlog")
+        else:
+            ax.set_xscale("linear")
         if log:
             ax.set_yscale("log")
             ax.set_ylim((0.5, ax.get_ylim()[1]))
@@ -483,7 +487,7 @@ class HistogramCanvas(CanvasBase):
         self.signal_color = plt.cm.seismic(0.9)
 
 
-    def pull_plot(self, ax, hist_name, nom_hist_name, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, fmt="o--", pull_bar=False):
+    def pull_plot_old(self, ax, hist_name, nom_hist_name, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, fmt="o--", pull_bar=False):
         nom_hist = self.hists[nom_hist_name]
         bin_centers = nom_hist.bin_centers
         bin_edges = nom_hist.bin_edges
@@ -533,6 +537,90 @@ class HistogramCanvas(CanvasBase):
             ax.set_ylim(ylim)
         ax.set_ylabel(ylabel)
         ax.set_xlabel(xlabel)
+
+
+    def pull_plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", **kwargs):
+        pull_args = copy.deepcopy(pull_args)
+        self.b2fig = B2Figure(auto_description=False)
+        self.fig, ax = self.b2fig.create(ncols=1, nrows=2, dpi=dpi, figsize=figsize, gridspec_kw={'height_ratios': [2, 1]})
+        self.ax = ax[0]
+        if additional_info:
+                self.description["additional_info"] = additional_info
+        self.b2fig.add_descriptions(ax=self.ax, **self.description)
+        self.ax_pull = ax[1]
+        #move the xlabel to the pull plot
+
+        self.ax.set_xticklabels([])
+        self.fig.subplots_adjust(hspace=0.05)
+
+        self.plot_ax(self.ax, **kwargs)
+        self.b2fig.shift_offset_text_position(self.ax)
+        self.add_labels(ax=self.ax)
+        if "x_log" in kwargs:
+            pull_args["x_log"] = kwargs["x_log"]
+            #print(pull_args["x_log"])
+        self.plot_pull_ax(self.ax_pull, **pull_args)
+
+        self.ax.set_xticklabels([])
+        self.fig.subplots_adjust(hspace=0.05)
+
+        return self.fig, ax
+
+
+    def plot_pull_ax(self, ax, hist_name, nom_hist_name, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, fmt="o--",
+                     pull_bar=False, x_log=False):
+        nom_hist = self.hists[nom_hist_name]
+        bin_centers = nom_hist.bin_centers
+        bin_edges = nom_hist.bin_edges
+        bins = nom_hist.size
+
+        def iterate_plot(hist, hist_color):
+            nonlocal ylabel # idk why we need this here but without it will not find ylabel variable
+            nonlocal pull_bar
+            if ratio:
+                plot = hist.entries/nom_hist.entries
+                if pull_bar:
+                    self.plot_pull_bars(ax, bin_edges, plot-1, 1)
+                ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
+                if not ylabel:
+                    ylabel = r"$\mathbf{\frac{"+hist.name.replace("_","\_").replace(" ","\;")+r"}{"+nom_hist.name.replace("_","\_").replace(" ","\;")+r"}}$"
+            else:
+                plot = (hist.entries-nom_hist.entries)/nom_hist.entries
+                if pull_bar:
+                    self.plot_pull_bars(ax, bin_edges, plot)
+                ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
+                if not ylabel:
+                    hist_label = hist.name.replace("_","\_").replace(" ","\;")
+                    nom_hist_label = nom_hist.name.replace("_","\_").replace(" ","\;")
+                    ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
+            plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
+            ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
+
+        if type(hist_name) == list:
+            if type(color) != dict and len(color) != len(hist_name):
+                #print("WARNING: color must have the same type and size as hist_name! -> gonna create new color scheme...")
+                #self.color_scheme()
+                # we use the default canvas colors
+               color = self.colors
+            for name in hist_name:
+                hist = self.hists[name]
+                iterate_plot(hist, color[name])
+        else:
+            iterate_plot(self.hists[hist_name], color)
+
+
+        if x_log:
+            ax.set_xscale("symlog")
+        else:
+            ax.set_xscale("linear")
+        ax.set_xlim(bin_edges[0], bin_edges[-1])
+        if ylim:
+            ax.set_ylim(ylim)
+        ax.set_ylabel(ylabel)
+        ax.set_xlabel(xlabel)
+
+
+
 
 
     def plot_pull_bars(self, ax, bin_edges, y, bottom=0, color="lightgrey"):
