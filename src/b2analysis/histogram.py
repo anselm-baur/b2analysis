@@ -37,6 +37,9 @@ class HistogramBase:
         self.label = label if label else name
         self.overflow_bin = overflow_bin
 
+        if isinstance(weights, int) or isinstance(weights, float):
+            weights = np.full(data.size, weights)
+
         if not weights.any():
             self.weights = np.full(data.size, self.scale)
         else:
@@ -62,7 +65,7 @@ class HistogramBase:
 
         # We create a new Histogram from a data sample
         else:
-            print(kwargs)
+            #print(kwargs)
             if not overflow_bin:
                 np_hist = np.histogram(data, weights=self.weights, **kwargs)
                 self.bin_counts = np_hist[0]
@@ -252,6 +255,7 @@ class Histogram(HistogramBase):
         self.is_signal = is_signal
         self.lumi = lumi
         self.lumi_scale = lumi_scale # basically the weight of each event
+        self.color = None
 
 
     def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
@@ -351,6 +355,8 @@ class HistogramCanvas(CanvasBase):
         self.labels[hist.name] = label
         if color:
             self.colors[hist.name] = color
+        elif hist.color:
+            self.colors[hist.name] = hist.color
         if hist.is_signal:
             self.signals += 1
         self.__update()
@@ -369,7 +375,7 @@ class HistogramCanvas(CanvasBase):
         """Plot the histogram canvas."""
 
         # make sure we have colors for our histograms
-        if not "colors" in kwargs and len(self.colors) != len(self.hists) or len(kwargs["colors"]) != len(self.hists):
+        if not "colors" in kwargs and len(self.colors) != len(self.hists) or ("colors" in kwargs and len(kwargs["colors"]) != len(self.hists)):
             print("create colors...")
             reverse_colors = False if not "reverse_colors" in kwargs else kwargs["reverse_colors"]
             self.color_scheme(reverse=reverse_colors)
@@ -470,7 +476,10 @@ class HistogramCanvas(CanvasBase):
             nhists = len(self.hists)
         linspace = np.linspace(cm_low,cm_high,nhists)
         for name, color in zip(self.hists, cm(np.flip(linspace) if reverse else linspace)):
-            self.colors[name] = color
+            if self.hists[name].color:
+                self.colors[name] = self.hists[name].color
+            else:
+                self.colors[name] = color
         self.signal_color = plt.cm.seismic(0.9)
 
 
@@ -606,7 +615,7 @@ class StackedHistogram(HistogramCanvas):
         """
         if not name:
             name=self.name
-        return Histogram(name, self.entries, var=self.var, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True)
+        return Histogram(name, self.entries, var=self.var, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True, label=name)
 
     def get_data_hist(self, name=""):
         """Return the data histogram
