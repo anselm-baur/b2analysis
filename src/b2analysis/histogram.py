@@ -44,7 +44,7 @@ class HistogramBase:
             self.weights = np.full(data.size, self.scale)
         else:
             if not weights.size == data.size:
-                raise ValueError("data and weigts not same size!")
+                raise ValueError(f"data and weights not same size ({weights.size}/{data.size})!")
             self.weights = weights * scale
 
 
@@ -405,12 +405,16 @@ class HistogramCanvas(CanvasBase):
 
         return self.fig, self.ax
 
-    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=[], reverse_colors=False):
-        if len(colors) < 1 :
-            if len(self.colors) < 1:
+    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=None, reverse_colors=False):
+        if not colors:
+            colors = []
+        if len(colors) <  len(self.hists):
+            if len(self.colors) <  len(self.hists):
                 print("create colors...")
                 self.color_scheme(reverse=reverse_colors)
             colors = self.colors
+            print(colors)
+            print(self.hists.keys())
 
         uncert_label = True
         for i, (name, hist) in enumerate(self.hists.items()):
@@ -469,6 +473,16 @@ class HistogramCanvas(CanvasBase):
         ax.set_ylabel(ylabel)
 
 
+    def get_signal_names(self):
+        """Return a list of the names of the signal histograms in self.hists.
+        """
+        signal_names = []
+        for name, hist in self.hists.items():
+            if hist.is_signal:
+                signal_names.append(name)
+        return signal_names
+
+
     def color_scheme(self, reverse=False, exclude_signals=True,  cm=plt.cm.gist_earth):
         #cm = plt.cm.seismic
         cm_low = 0.1
@@ -476,10 +490,15 @@ class HistogramCanvas(CanvasBase):
 
         if exclude_signals:
             nhists = len(self.hists)-self.signals
+            signals = self.get_signal_names()
+            iter_histsts = copy.deepcopy(self.hists)
+            for sig in signals:
+                del(iter_histsts[sig])
         else:
             nhists = len(self.hists)
         linspace = np.linspace(cm_low,cm_high,nhists)
-        for name, color in zip(self.hists, cm(np.flip(linspace) if reverse else linspace)):
+
+        for name, color in zip(iter_histsts, cm(np.flip(linspace) if reverse else linspace)):
             if self.hists[name].color:
                 self.colors[name] = self.hists[name].color
             else:
@@ -597,12 +616,14 @@ class HistogramCanvas(CanvasBase):
             ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
 
         if type(hist_name) == list:
-            if type(color) != dict and len(color) != len(hist_name):
+            if type(color) != dict or len(color) != len(hist_name):
                 #print("WARNING: color must have the same type and size as hist_name! -> gonna create new color scheme...")
                 #self.color_scheme()
                 # we use the default canvas colors
                color = self.colors
             for name in hist_name:
+                #print(color)
+                #print(hist_name)
                 hist = self.hists[name]
                 iterate_plot(hist, color[name])
         else:
@@ -929,7 +950,8 @@ class StackedDataHistogram(StackedHistogram):
 
 
 
-def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additional_info="", output_dir="", log=True, pull_ylim=(0.8,1.2), pull_bar=True, fmt="o", savefig=False, suffix="", callback=None, **kwargs):
+def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additional_info="", output_dir="", log=True, pull_ylim=(0.8,1.2), pull_bar=True, fmt="o", savefig=False, suffix="",
+                        callback=None, xlabel="", **kwargs):
     """Creates a histogramCanvos object from noth histograms with a pull plot.
 
     :param name: name of the histogram canvas
@@ -960,6 +982,8 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
     :type suffix: str, optional
     :param callback: a callback function for ax
     :type callback: func, optional
+    :param xlabel: x label text for the comparison plot
+    :type xlabel: str, optional
     :return: The resulting HistogramCanvas from both histograms
     :rtype: HistogramCanvas
     """
@@ -985,11 +1009,12 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
                 "ratio": True,
                 "ylim": pull_ylim,
                 "pull_bar": pull_bar,
-                "fmt": fmt}
+                "fmt": fmt,
+                "xlabel": xlabel}
     unit_label = r" in $\mathbf{" + _hist_1.unit + r"}$" if _hist_1.unit else ""
     if additional_info:
         hist_canvas.description["additional_info"] = additional_info
-    fig, ax = hist_canvas.plot(xlabel=f"{_hist_1.var}" + unit_label, histtype="step", figsize=(6,5),
+    fig, ax = hist_canvas.pull_plot(xlabel=f"{_hist_1.var}" + unit_label, histtype="step", figsize=(6,5),
                     log=log, colors=["blue", "red"], pull_args=pull_args)
 
     if callback:
