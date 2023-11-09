@@ -105,10 +105,10 @@ class Test_StackedHistogram():
         serial_hist = stacked_hist.serialize()
         assert serial_hist["name"] == "stacked_histogram"
         assert serial_hist["var"] == "x"
-        assert serial_hist["bin_edges"] == list(stacked_hist.bin_edges)
+        assert serial_hist["bins"] == stacked_hist.bins
 
         for h in ["data1", "data2", "data3"]:
-            assert serial_hist["hists"][h]["entries"] == list(stacked_hist.hists[h].entries)
+            assert serial_hist["hists"][h]["data"] == list(stacked_hist.hists[h].entries)
             assert serial_hist["hists"][h]["err"] == list(stacked_hist.hists[h].err)
 
 
@@ -127,7 +127,7 @@ class Test_StackedHistogram():
             assert hist1 == hist2
             assert np.all(stacked_hist[hist1].entries == stacked_hist_from_serial[hist2].entries)
             assert np.all(stacked_hist[hist1].err == stacked_hist_from_serial[hist2].err)
-            assert np.all(np.array(stacked_hist[hist1].bin_edges, dtype=np.float32) == stacked_hist_from_serial[hist2].bin_edges)
+            assert np.all(stacked_hist[hist1].bin_edges == stacked_hist_from_serial[hist2].bin_edges)
 
 
 

@@ -37,8 +37,15 @@ class HistogramBase(object):
         self.label = label if label else name
         self.overflow_bin = overflow_bin
 
+        print(weights, type(weights))
         if isinstance(weights, int) or isinstance(weights, float):
             weights = np.full(data.size, weights)
+        if isinstance(weights, list):
+            print("make np array...")
+            weights = np.array(weights)
+            print(weights, type(weights))
+        if isinstance(data, list):
+            data = np.array(data)
 
         if not weights.any():
             self.weights = np.full(data.size, self.scale)
@@ -52,11 +59,11 @@ class HistogramBase(object):
         if is_hist:
             if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
                 raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
-            self.bin_edges = kwargs["bins"]
-            self.bin_counts = data
+            self.bin_edges = np.array(kwargs["bins"])
+            self.bin_counts = np.array(data)
             self._update_bins()
             if "err" in kwargs:
-                self.err = kwargs["err"]
+                self.err = np.array(kwargs["err"])
                 self.stat_uncert = None #omit wrong uncertainty calculation
                 self.entries = self.bin_counts
             else:
@@ -122,9 +129,6 @@ class HistogramBase(object):
                 w_i = weights[(data>=lower_edge) & (data<=upper_edge)]
             w_uncert+= [np.sqrt(np.sum(w_i**2))]
         return np.array(w_uncert)
-
-
-
 
 
     def update_hist(self):
@@ -250,12 +254,12 @@ class HistogramBase(object):
 class Histogram(HistogramBase):
     """Analysis Histogram Class."""
 
-    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, **kwargs):
+    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, color=None,  **kwargs):
         super().__init__(name=name, data=data, scale=lumi_scale, is_hist=is_hist, **kwargs)
         self.is_signal = is_signal
         self.lumi = lumi
         self.lumi_scale = lumi_scale # basically the weight of each event
-        self.color = None
+        self.color = color
 
 
     def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
@@ -304,11 +308,19 @@ class Histogram(HistogramBase):
         :rtype: dict
         """
         ser_hist = {"name": self.name,
-                    "entries": list(self.entries),
+                    "data": list(self.entries),
                     "err": list(self.err),
                     "lumi": self.lumi,
-                    "bin_edges": list(self.bin_edges),
-                    "color": self.color
+                    "bins": list(self.bin_edges),
+                    "lumi_scale": self.scale,
+                    #"weights": list(self.weights), # makes no sence to write out the weigts e.g. from single events... event information is anyways already lost
+                    "var": self.var,
+                    "unit": self.unit,
+                    "color": self.color,
+                    "label": self.label,
+                    "is_signal": self.is_signal,
+                    "is_hist": True,
+                    "overflow_bin": self.overflow_bin
                     }
         return ser_hist
 
@@ -686,12 +698,13 @@ class StackedHistogram(HistogramCanvas):
         stacked_hist = StackedHistogram(**init_kwargs)
 
         for name, hist in serial_hist["hists"].items():
-            stacked_hist.add_histogram(Histogram(name, np.array(hist["entries"]), serial_hist["lumi"],
-                                                err=np.array(hist["err"]),
-                                                bins=np.array(serial_hist["bin_edges"]), is_hist=True))
+            #stacked_hist.add_histogram(Histogram(name, np.array(hist["entries"]), serial_hist["lumi"],
+            #                                    err=np.array(hist["err"]),
+            #                                    bins=np.array(serial_hist["bin_edges"]), is_hist=True))
+            stacked_hist.add_histogram(Histogram(**hist))
         if "data_hist" in serial_hist and serial_hist["data_hist"]:
             stacked_hist.add_data_histogram(Histogram(serial_hist["data_hist"]["name"],
-                                                  np.array(serial_hist["data_hist"]["entries"]),
+                                                  np.array(serial_hist["data_hist"]["data"]),
                                                   serial_hist["lumi"],
                                                   err=np.array(serial_hist["data_hist"]["err"]),
                                                   bins=np.array(serial_hist["bin_edges"]), is_hist=True))
@@ -717,6 +730,7 @@ class StackedHistogram(HistogramCanvas):
             assert np.array_equal(hist.bin_edges, self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
         self.data_hist = hist
 
+
     def get_hist(self, name=""):
         """Return the stacked entries as histogram
 
@@ -726,6 +740,7 @@ class StackedHistogram(HistogramCanvas):
         if not name:
             name=self.name
         return Histogram(name, self.entries, var=self.var, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True, label=name)
+
 
     def get_data_hist(self, name=""):
         """Return the data histogram
@@ -873,6 +888,7 @@ class StackedHistogram(HistogramCanvas):
             entries = self.data_hist.entries
         return entries
 
+
     def __update(self):
         self.entries = self.get_stacked_entries()
         self.err = self.get_stat_uncert()
@@ -903,7 +919,6 @@ class StackedHistogram(HistogramCanvas):
         return serial_hist
 
 
-
     def __add__(self, other):
         #FIXME: Check if copy or deepcopy
         self_copy = self.copy()
@@ -932,6 +947,7 @@ class StackedHistogram(HistogramCanvas):
         self_copy.__update()
         return self_copy
 
+
     def __getitem__(self, item):
         if item in self.hists:
             return self.hists[item]
@@ -941,24 +957,6 @@ class StackedHistogram(HistogramCanvas):
             return self.data_hist
         else:
             raise ValueError(f"{item} not a valid histogram!")
-
-
-class StackedDataHistogram(StackedHistogram):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.data_hist
-
-    def add_data_histogram(self, hist):
-        if not self.bin_edges.any():
-            self.bin_edges = hist.bin_edges
-            self.bin_centers = hist.bin_centers
-        else:
-            assert np.array_equal(hist.bin_edges, self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
-
-        self.data_hist = hist
-
-    def create_data_histogram(self,  name, data, lumi, lumi_scale=1, **kwargs):
-        self.add_data_histogram(Histogram(name, data, lumi, lumi_scale=1, **kwargs))
 
 
 
