@@ -37,6 +37,9 @@ class HistogramBase(object):
         self.label = label if label else name
         self.overflow_bin = overflow_bin
 
+        weights = copy.deepcopy(weights)
+        data = copy.deepcopy(data)
+
         #print(weights, type(weights))
         if isinstance(weights, int) or isinstance(weights, float):
             weights = np.full(data.size, weights)
@@ -46,6 +49,7 @@ class HistogramBase(object):
             data = np.array(data)
 
         if not weights.any():
+            print("create weights")
             self.weights = np.full(data.size, self.scale)
         else:
             if not weights.size == data.size:
@@ -877,6 +881,13 @@ class StackedHistogram(HistogramCanvas):
         elif len(self.hists) ==0 and self.data_hist:
             entries = self.data_hist.entries
         return entries
+
+
+    def get_ratio(self):
+        """Get the ratio of stack/data per bin. This ratio can be used to apply to the simulation data
+        to reweight the histogram.
+        """
+        return self.data_hist.entries/self.get_hist().entries
 
 
     def __update(self):
