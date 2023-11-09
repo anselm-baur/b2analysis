@@ -5,7 +5,7 @@ from b2style.b2figure import B2Figure
 import copy
 
 
-class CanvasBase:
+class CanvasBase(object):
 
     def __init__(self, name="hist_canvas", output_dir = "") -> None:
         self.output_dir = output_dir
@@ -25,7 +25,7 @@ class CanvasBase:
 
 
 
-class HistogramBase:
+class HistogramBase(object):
     def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, weights=np.array([]), **kwargs):
         """Creates a HistogramBase object from either data points wich gets histogramed (is_hist=False) or form already binned data
         (is_hist=True).
@@ -307,7 +307,8 @@ class Histogram(HistogramBase):
                     "entries": list(self.entries),
                     "err": list(self.err),
                     "lumi": self.lumi,
-                    "bin_edges": list(self.bin_edges)
+                    "bin_edges": list(self.bin_edges),
+                    "color": self.color
                     }
         return ser_hist
 
@@ -525,15 +526,15 @@ class HistogramCanvas(CanvasBase):
                     self.plot_pull_bars(ax, bin_edges, plot-1, 1)
                 ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
                 if not ylabel:
-                    ylabel = r"$\mathbf{\frac{"+hist.name.replace("_","\_").replace(" ","\;")+r"}{"+nom_hist.name.replace("_","\_").replace(" ","\;")+r"}}$"
+                    ylabel = r"$\mathbf{\frac{"+hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}{"+nom_hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}}$"
             else:
                 plot = (hist.entries-nom_hist.entries)/nom_hist.entries
                 if pull_bar:
                     self.plot_pull_bars(ax, bin_edges, plot)
                 ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
                 if not ylabel:
-                    hist_label = hist.name.replace("_","\_").replace(" ","\;")
-                    nom_hist_label = nom_hist.name.replace("_","\_").replace(" ","\;")
+                    hist_label = hist.name.replace("_",r"\_").replace(" ",r"\;")
+                    nom_hist_label = nom_hist.name.replace("_",r"\_").replace(" ",r"\;")
                     ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
             plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
             ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
@@ -602,15 +603,15 @@ class HistogramCanvas(CanvasBase):
                     self.plot_pull_bars(ax, bin_edges, plot-1, 1)
                 ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
                 if not ylabel:
-                    ylabel = r"$\mathbf{\frac{"+hist.name.replace("_","\_").replace(" ","\;")+r"}{"+nom_hist.name.replace("_","\_").replace(" ","\;")+r"}}$"
+                    ylabel = r"$\mathbf{\frac{"+hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}{"+nom_hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}}$"
             else:
                 plot = (hist.entries-nom_hist.entries)/nom_hist.entries
                 if pull_bar:
                     self.plot_pull_bars(ax, bin_edges, plot)
                 ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
                 if not ylabel:
-                    hist_label = hist.name.replace("_","\_").replace(" ","\;")
-                    nom_hist_label = nom_hist.name.replace("_","\_").replace(" ","\;")
+                    hist_label = hist.name.replace("_",r"\_").replace(" ",r"\;")
+                    nom_hist_label = nom_hist.name.replace("_",r"\_").replace(" ",r"\;")
                     ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
             plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
             ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
@@ -889,11 +890,13 @@ class StackedHistogram(HistogramCanvas):
 
         serial_hist["hists"] = {}
         for h_name, h in self.hists.items():
-            serial_hist["hists"][h_name] = {"entries": list(h.entries),
-                                            "err": list(h.err)}
+            #serial_hist["hists"][h_name] = {"entries": list(h.entries),
+            #                                "err": list(h.err),
+            #                                "color": h.color}
+            serial_hist["hists"][h_name] = h.serialize()
 
         if self.data_hist:
-            serial_hist["data_hist"] = {} #self.data_hist.serialize()
+            serial_hist["data_hist"] = self.data_hist.serialize()
         else:
             serial_hist["data_hist"] = {}
 
@@ -928,6 +931,16 @@ class StackedHistogram(HistogramCanvas):
 
         self_copy.__update()
         return self_copy
+
+    def __getitem__(self, item):
+        if item in self.hists:
+            return self.hists[item]
+        elif item == "data":
+            return self.data_hist
+        elif item == self.data_hist.name:
+            return self.data_hist
+        else:
+            raise ValueError(f"{item} not a valid histogram!")
 
 
 class StackedDataHistogram(StackedHistogram):

@@ -125,9 +125,10 @@ class Test_StackedHistogram():
         assert stacked_hist_from_serial.lumi == stacked_hist.lumi
         for hist1, hist2 in zip(stacked_hist.hists, stacked_hist_from_serial.hists):
             assert hist1 == hist2
-            assert stacked_hist[hist1].entries == stacked_hist_from_serial[hist2].entries
-            assert stacked_hist[hist1].err == stacked_hist_from_serial[hist2].err
-            assert stacked_hist[hist1].bin_edges == stacked_hist_from_serial[hist2].bin_edges
+            assert np.all(stacked_hist[hist1].entries == stacked_hist_from_serial[hist2].entries)
+            assert np.all(stacked_hist[hist1].err == stacked_hist_from_serial[hist2].err)
+            assert np.all(np.array(stacked_hist[hist1].bin_edges, dtype=np.float32) == stacked_hist_from_serial[hist2].bin_edges)
+
 
 
 
