@@ -691,7 +691,7 @@ class StackedHistogram(HistogramCanvas):
         :return: stacked histogram
         :rtype: StackedHistogram
         """
-        args = ["name", "var", "lumi"]
+        args = ["name", "var", "lumi", "unit"]
         init_kwargs = {arg: serial_hist[arg] for arg in args}
         stacked_hist = StackedHistogram(**init_kwargs)
 
@@ -888,6 +888,7 @@ class StackedHistogram(HistogramCanvas):
         serial_hist = {}
         serial_hist["name"] = self.name
         serial_hist["var"] = self.var
+        serial_hist["unit"] = self.unit
         serial_hist["lumi"] = self.lumi
         serial_hist["bins"] = self.bins
         serial_hist["range"] = self.range
