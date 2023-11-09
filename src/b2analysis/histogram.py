@@ -37,13 +37,11 @@ class HistogramBase(object):
         self.label = label if label else name
         self.overflow_bin = overflow_bin
 
-        print(weights, type(weights))
+        #print(weights, type(weights))
         if isinstance(weights, int) or isinstance(weights, float):
             weights = np.full(data.size, weights)
         if isinstance(weights, list):
-            print("make np array...")
             weights = np.array(weights)
-            print(weights, type(weights))
         if isinstance(data, list):
             data = np.array(data)
 
@@ -698,17 +696,9 @@ class StackedHistogram(HistogramCanvas):
         stacked_hist = StackedHistogram(**init_kwargs)
 
         for name, hist in serial_hist["hists"].items():
-            #stacked_hist.add_histogram(Histogram(name, np.array(hist["entries"]), serial_hist["lumi"],
-            #                                    err=np.array(hist["err"]),
-            #                                    bins=np.array(serial_hist["bin_edges"]), is_hist=True))
             stacked_hist.add_histogram(Histogram(**hist))
-        if "data_hist" in serial_hist and serial_hist["data_hist"]:
-            stacked_hist.add_data_histogram(Histogram(serial_hist["data_hist"]["name"],
-                                                  np.array(serial_hist["data_hist"]["data"]),
-                                                  serial_hist["lumi"],
-                                                  err=np.array(serial_hist["data_hist"]["err"]),
-                                                  bins=np.array(serial_hist["bin_edges"]), is_hist=True))
-
+        if "data_hist" in serial_hist:
+                stacked_hist.add_data_histogram(Histogram(**serial_hist["data_hist"]))
         return stacked_hist
 
 
