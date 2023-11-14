@@ -40,21 +40,30 @@ class HistogramBase(object):
         weights = copy.deepcopy(weights)
         data = copy.deepcopy(data)
 
-        #print(weights, type(weights))
-        if isinstance(weights, int) or isinstance(weights, float):
-            weights = np.full(data.size, weights)
-        if isinstance(weights, list):
-            weights = np.array(weights)
+        #make sure data are a numpy array
         if isinstance(data, list):
             data = np.array(data)
 
-        if not weights.any():
-            print("create weights")
+        #make sure weights are a numpy array
+        print(weights, type(weights))
+        if isinstance(weights, int) or isinstance(weights, float):
+            weights = np.full(data.size, weights)
+        elif isinstance(weights, list):
+            weights = np.array(weights)
+
+
+
+        if weights is None:
+            self.weights = np.full(data.size, self.scale)
+        elif not weights.any():
+            #print("create weights")
             self.weights = np.full(data.size, self.scale)
         else:
             if not weights.size == data.size:
                 raise ValueError(f"data and weights not same size ({weights.size}/{data.size})!")
             self.weights = weights * scale
+        #print(scale, self.weights, weights)
+        #print(data.size)
 
 
         # We create a Histogram from an existing Histogram
