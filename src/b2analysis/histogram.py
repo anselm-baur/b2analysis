@@ -45,7 +45,7 @@ class HistogramBase(object):
             data = np.array(data)
 
         #make sure weights are a numpy array
-        print(weights, type(weights))
+        #print(weights, type(weights))
         if isinstance(weights, int) or isinstance(weights, float):
             weights = np.full(data.size, weights)
         elif isinstance(weights, list):
@@ -694,6 +694,8 @@ class StackedHistogram(HistogramCanvas):
                               "markersize": 2.2,
                               "elinewidth": 0.5
                               }
+        self.__update()
+
 
     @staticmethod
     def from_serial(serial_hist):
@@ -805,7 +807,7 @@ class StackedHistogram(HistogramCanvas):
         bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
         i=0
-        for name, hist in self.hists.items():
+        for name, hist in sorted(self.hists.items(), key=lambda item: item[1].entries.sum(), reverse=False):
             color = self.signal_color if hist.is_signal else colors[name]
             #print(f"stack {name}")
             #ax.plot(self.bin_centers, stack+hist.bin_counts, drawstyle="steps", color=colors[i], linewidth=0.5)
@@ -946,7 +948,7 @@ class StackedHistogram(HistogramCanvas):
                 this_hist.update_hist()
                 self_copy.hists[name] = this_hist
             else:
-                print("adding histogram")
+                #print("adding histogram")
                 self_copy.add_histogram(hist)
 
         if self.data_hist and other.data_hist:
