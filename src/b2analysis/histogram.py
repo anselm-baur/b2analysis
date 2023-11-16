@@ -118,6 +118,10 @@ class HistogramBase(object):
             self.size = self.bin_centers.size
             self.update_hist()
 
+    @property
+    def entries(self):
+        return self.bin_entries
+
 
     def calc_weighted_uncert(self, data, weights, bin_edges):
         """Caluculate the statistical uncertainty of each bin regarding the weighted data
