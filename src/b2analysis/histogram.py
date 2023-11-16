@@ -71,21 +71,21 @@ class HistogramBase(object):
             if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
                 raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
             self.bin_edges = np.array(kwargs["bins"])
-            self.bin_entries = np.array(data)
+            self.entries = np.array(data)
             self._update_bins()
             if "err" in kwargs:
                 self.err = np.array(kwargs["err"])
                 self.stat_uncert = None #omit wrong uncertainty calculation
             else:
                 self.update_hist()
-            self.size = self.bin_entries.size
+            self.size = self.entries.size
 
         # We create a new Histogram from a data sample
         else:
             #print(kwargs)
             if not overflow_bin:
                 np_hist = np.histogram(data, weights=self.weights, **kwargs)
-                self.bin_entries = np_hist[0]
+                self.entries = np_hist[0]
                 self.bin_edges = np_hist[1]
                 self._update_bins()
                 self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
@@ -109,7 +109,7 @@ class HistogramBase(object):
                     kwargs["bins"] = np.concatenate([[-np.inf],kwargs["bins"],[np.inf]])
 
                 np_hist = np.histogram(data, weights=self.weights, **kwargs)
-                self.bin_entries = np_hist[0]
+                self.entries = np_hist[0]
                 self.bin_edges = np_hist[1]
                 self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
                 self._trim_hist(0,1)
@@ -117,10 +117,6 @@ class HistogramBase(object):
 
             self.size = self.bin_centers.size
             self.update_hist()
-
-    @property
-    def entries(self):
-        return self.bin_entries
 
 
     def calc_weighted_uncert(self, data, weights, bin_edges):
@@ -156,23 +152,23 @@ class HistogramBase(object):
         # start with first bin
         if a == 0:
             #add bin content and error of the cut bins to the first new bin b
-            self.bin_entries[b] = np.sum(self.bin_entries[:b+1])
+            self.entries[b] = np.sum(self.entries[:b+1])
             self.err[b] = np.sqrt(np.sum(self.err[:b+1]**2))
-            self.bin_entries = self.bin_entries[b:]
+            self.entries = self.entries[b:]
             self.err = self.err[b:]
             self.bin_edges = self.bin_edges[b:]
         # end with last bin
         elif b == -1:
-            self.bin_entries[a] = np.sum(self.bin_entries[a:])
+            self.entries[a] = np.sum(self.entries[a:])
             self.err[a] = np.sqrt(np.sum(self.err[a:]**2))
-            self.bin_entries = self.bin_entries[:a+1]
+            self.entries = self.entries[:a+1]
             self.err = self.err[:a+1]
             self.bin_edges = self.bin_edges[:a+1]
         # s.th. in the center is cut out
         else:
-            self.bin_entries[a] = np.sum(self.bin_entries[a:b+1])
+            self.entries[a] = np.sum(self.entries[a:b+1])
             self.err[a] = np.sqrt(np.sum(self.err[a:b+1]**2))
-            self.bin_entries = np.concatenate([self.bin_entries[:a+1], self.bin_entries[b+1:]])
+            self.entries = np.concatenate([self.entries[:a+1], self.entries[b+1:]])
             self.err[a] = np.concatenate([self.err[:a+1], self.err[b+1:]])
             self.bin_edges = np.concatenate([self.bin_edges[:a+1], self.bin_edges[b+1:]])
         self._update_bins()
@@ -225,14 +221,14 @@ class HistogramBase(object):
             fig, ax = plt.subplots(ncols=1, nrows=1, dpi=dpi)
 
         if histtype == "errorbar":
-            ax.errorbar(self.bin_centers, self.bin_entries, yerr=self.err, label=self.label,)
+            ax.errorbar(self.bin_centers, self.entries, yerr=self.err, label=self.label,)
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
-            y = np.concatenate([[0], self.bin_entries, [0]])
+            y = np.concatenate([[0], self.entries, [0]])
             ax.step(x, y, label=self.label, lw=0.9)
-            uncert = np.sqrt(self.bin_entries)
+            uncert = np.sqrt(self.entries)
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
-            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.bin_entries-uncert,
+            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
                     edgecolor="grey",hatch="///////", fill=False, lw=0,label="stat. unc." if uncert_label else "")
             if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
@@ -258,13 +254,13 @@ class HistogramBase(object):
         so the scaled uncertainty is:
         x = sigma = lumi_scale * sqrt(n_2) / sqrt(lumi_scale)
         """
-        return np.sqrt(self.bin_entries)*(self.scale**(1/2))
+        return np.sqrt(self.entries)*(self.scale**(1/2))
 
 
     def __sub__(self, other):
         self.check_compatibility(other)
         diff_hist = self.copy()
-        diff_hist.bin_entries -= other.bin_entries
+        diff_hist.entries -= other.entries
         diff_hist.scale = 1
         diff_hist.weights = None
         diff_hist.name += " - " + other.name
@@ -275,7 +271,7 @@ class HistogramBase(object):
     def __add__(self, other):
         self.check_compatibility(other)
         add_hist = self.copy()
-        add_hist.bin_entries += other.bin_entries
+        add_hist.entries += other.entries
         add_hist.err = np.sqrt(self.err**2 + other.err**2)
         add_hist.scale = 1
         add_hist.weights = None
@@ -316,14 +312,14 @@ class Histogram(HistogramBase):
             fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
 
         if histtype == "errorbar":
-            ax.errorbar(self.bin_centers, self.bin_entries, yerr=self.err, label=self.label, **b2fig.errorbar_args)
+            ax.errorbar(self.bin_centers, self.entries, yerr=self.err, label=self.label, **b2fig.errorbar_args)
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
-            y = np.concatenate([[0], self.bin_entries, [0]])
+            y = np.concatenate([[0], self.entries, [0]])
             ax.step(x, y, label=self.label, lw=0.9)
-            uncert = np.sqrt(self.bin_entries)
+            uncert = np.sqrt(self.entries)
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
-            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.bin_entries-uncert,
+            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
                     edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
             if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
@@ -847,15 +843,15 @@ class StackedHistogram(HistogramCanvas):
         for name, hist in sorted(self.hists.items(), key=lambda item: item[1].entries.sum(), reverse=False):
             color = self.signal_color if hist.is_signal else colors[name]
             #print(f"stack {name}")
-            #ax.plot(self.bin_centers, stack+hist.bin_entries, drawstyle="steps", color=colors[i], linewidth=0.5)
-            #ax.fill_between(self.bin_centers, stack, stack+hist.bin_entries, label=name, step="mid",
+            #ax.plot(self.bin_centers, stack+hist.entries, drawstyle="steps", color=colors[i], linewidth=0.5)
+            #ax.fill_between(self.bin_centers, stack, stack+hist.entries, label=name, step="mid",
             #                linewidth=0, linestyle="-", color=color)
-            #ax.fill_between(self.bin_centers, stack, stack+hist.bin_entries, label=name, step="mid",
+            #ax.fill_between(self.bin_centers, stack, stack+hist.entries, label=name, step="mid",
             #                linewidth=0, linestyle="-", color=color)
-            ax.bar(x=self.bin_centers, height=hist.bin_entries, width=bin_width, bottom=stack,
+            ax.bar(x=self.bin_centers, height=hist.entries, width=bin_width, bottom=stack,
                 color=color, edgecolor=color, lw=0.1,label=name)
 
-            stack += hist.bin_entries
+            stack += hist.entries
             i += 1
 
         uncert = self.get_stat_uncert()
