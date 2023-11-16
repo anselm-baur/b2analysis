@@ -69,6 +69,7 @@ class HistogramBase(object):
         # We create a Histogram from an existing Histogram
         if is_hist:
             if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
+                print(f"failed, len(data)+1 = {len(list(data))+1} == len(bins) = {len(list(kwargs['bins']))}")
                 raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
             self.bin_edges = np.array(kwargs["bins"])
             self.entries = np.array(data)
@@ -114,6 +115,7 @@ class HistogramBase(object):
                 self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
                 self._trim_hist(0,1)
                 self._trim_hist(-2,-1)
+                self._update_bins()
 
             self.size = self.bin_centers.size
             self.update_hist()
@@ -181,6 +183,7 @@ class HistogramBase(object):
 
 
     def rebin(self, new_bin_edges):
+        new_bin_edges = np.array(new_bin_edges)
         for nbin in new_bin_edges:
             if nbin not in self.bin_edges:
                 print("New bin boarders need to agree with old bin boarders")
@@ -196,10 +199,12 @@ class HistogramBase(object):
                 tmpdata[i] += self.entries[u]
                 tmperr[i] = tmperr[i]+pow(self.err[u],2)
             tmperr[i] = np.sqrt(tmperr[i])
-        self.entries = tmpdata
-        self.err = tmperr
+        self.entries = np.array(tmpdata)
+        self.err = np.array(tmperr)
         self.bin_edges = new_bin_edges
         self._update_bins()
+
+        #print(len(list(self.entries)), len(list(self.bin_edges)))
 
 
     def get_combined_bins(self, new_bin_edges):
@@ -398,12 +403,11 @@ class HistogramCanvas(CanvasBase):
         """Add a histogram to the canvas."""
         if not self.bin_edges.any():
             self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
-            self.bin_centers = hist.bin_centers
             if not self.unit and hist.unit:
                 self.unit = hist.unit
             self.bins = hist.bins
-            self.range = hist.range
             self.size = self.bin_centers.size
+            self._update_bins()
         else:
             assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
         if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
@@ -423,9 +427,22 @@ class HistogramCanvas(CanvasBase):
         pass
 
 
+    def _update_bins(self):
+        self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
+        self.range = (self.bin_edges[0], self.bin_edges[-1])
+        self.bins = self.bin_centers.size
+
+
     def create_histogram(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
         """Create a histogram from data and add it to the stack"""
         self.add_histogram(Histogram(name, data, lumi, lumi_scale, is_signal=is_signal, **kwargs))
+
+
+    def rebin(self, new_bin_edges):
+        for name, hist in self.hists.items():
+            hist.rebin(new_bin_edges)
+        self.bin_edges = np.array(new_bin_edges)
+        self._update_bins()
 
 
     def plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", **kwargs):
@@ -461,6 +478,7 @@ class HistogramCanvas(CanvasBase):
         self.add_labels(ax=self.ax)
 
         return self.fig, self.ax
+
 
     def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=None, reverse_colors=False):
         if not colors:
@@ -793,6 +811,20 @@ class StackedHistogram(HistogramCanvas):
             return data_hist
         else:
             return self.data_hist
+
+
+    def rebin(self, new_bin_edges):
+        for name, hist in self.hists.items():
+            print(f"rebin {name} hist")
+            hist.rebin(new_bin_edges)
+
+        if self.data_hist:
+            print(f"rebin {name} hist")
+            self.data_hist.rebin(new_bin_edges)
+
+        self.bin_edges = np.array(new_bin_edges)
+        self._update_bins()
+        self.__update()
 
 
     def plot(self, dpi=90,  xlabel="", ylabel="events", **kwargs):
