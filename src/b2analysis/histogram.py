@@ -819,7 +819,7 @@ class StackedHistogram(HistogramCanvas):
             hist.rebin(new_bin_edges)
 
         if self.data_hist:
-            print(f"rebin {name} hist")
+            print(f"rebin {self.data_hist.name} hist")
             self.data_hist.rebin(new_bin_edges)
 
         self.bin_edges = np.array(new_bin_edges)
