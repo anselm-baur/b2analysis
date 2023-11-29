@@ -182,6 +182,21 @@ class HistogramBase(object):
         self.bins = self.bin_centers.size
 
 
+    def rebin_relativ_hist(self, nominalhist, new_bin_edges):
+        nomhist=copy.deepcopy(nominalhist)
+        for nbin in nominalhist.bin_edges:
+            if nbin not in self.bin_edges:
+                print("Nominal bin boarders need to agree with syst bin boarders")
+                return
+        self.entries = np.array(self.entries)*np.array(nomhist.entries)
+        self.err = np.array(self.err)*np.array(nomhist.entries)
+        self.rebin(new_bin_edges)
+        nomhist.rebin(new_bin_edges)
+        self.entries = np.array(self.entries)/np.array(nomhist.entries)
+        self.err = np.array(self.err)/np.array(nomhist.entries)
+        self._update_bins()
+
+
     def rebin(self, new_bin_edges):
         new_bin_edges = np.array(new_bin_edges)
         for nbin in new_bin_edges:
@@ -436,6 +451,22 @@ class HistogramCanvas(CanvasBase):
     def create_histogram(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
         """Create a histogram from data and add it to the stack"""
         self.add_histogram(Histogram(name, data, lumi, lumi_scale, is_signal=is_signal, **kwargs))
+
+
+    def rebin_relativ_hist(self, nominalhist, new_bin_edges):
+        nomhist=copy.deepcopy(nominalhist)
+        for nbin in nominalhist.bin_edges:
+            if nbin not in self.bin_edges:
+                print("Nominal bin boarders need to agree with syst bin boarders")
+                return
+        for name, hist in self.hists.items():
+            hist.entries = np.array(hist.entries)*np.array(nomhist.entries)
+            hist.err = np.array(hist.err)*np.array(nomhist.entries)
+            hist.rebin(new_bin_edges)
+            nomhist.rebin(new_bin_edges)
+            hist.entries = np.array(hist.entries)/np.array(nomhist.entries)
+            hist.err = np.array(hist.err)/np.array(nomhist.entries)
+            hist._update_bins()
 
 
     def rebin(self, new_bin_edges):
@@ -812,14 +843,32 @@ class StackedHistogram(HistogramCanvas):
         else:
             return self.data_hist
 
+    
+    def rebin_relativ_hist(self, nominalhist, new_bin_edges):
+        nomhist=copy.deepcopy(nominalhist)
+        for nbin in nominalhist.bin_edges:
+            if nbin not in self.bin_edges:
+                print("Nominal bin boarders need to agree with syst bin boarders")
+                return
+        for name, hist in self.hists.items():
+            hist.entries = np.array(hist.entries)*np.array(nomhist.entries)
+            hist.err = np.array(hist.err)*np.array(nomhist.entries)
+            hist.rebin(new_bin_edges)
+            nomhist.rebin(new_bin_edges)
+            hist.entries = np.array(hist.entries)/np.array(nomhist.entries)
+        hist.err = np.array(hist.err)/np.array(nomhist.entries)
+        self.bin_edges = np.array(new_bin_edges)
+        self._update_bins()
+        self.__update()
 
+    
     def rebin(self, new_bin_edges):
         for name, hist in self.hists.items():
-            print(f"rebin {name} hist")
+            #print(f"rebin {name} hist")
             hist.rebin(new_bin_edges)
 
         if self.data_hist:
-            print(f"rebin {self.data_hist.name} hist")
+            #print(f"rebin {self.data_hist.name} hist")
             self.data_hist.rebin(new_bin_edges)
 
         self.bin_edges = np.array(new_bin_edges)
