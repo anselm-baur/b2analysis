@@ -196,6 +196,8 @@ class HistogramBase(object):
             tmpdata.append(0)
             tmperr.append(0)
             for u in combinedbins[i]:
+                if self.bin_edges[u]<new_bin_edges[0] or self.bin_edges[u]>new_bin_boarders[-1]:
+                    continue
                 tmpdata[i] += self.entries[u]
                 tmperr[i] = tmperr[i]+pow(self.err[u],2)
             tmperr[i] = np.sqrt(tmperr[i])
@@ -812,42 +814,6 @@ class StackedHistogram(HistogramCanvas):
         else:
             return self.data_hist
 
-    def rebin_syst_hist(self, nominalhist, new_bin_edges):
-        nomhist=copy.deepcopy(nominalhist)
-        for nbin in nominalhist.bin_edges:
-            if nbin not in self.bin_edges:
-                print("Nominal bin boarders need to agree with syst bin boarders")
-                return
-        self.entries = np.array(self.entries)*np.array(copy.deepcopy(nomhist.entries))
-        self.err = np.array(self.err)*np.array(copy.deepcopy(nomhist.entries))
-        new_bin_edges = np.array(new_bin_edges)
-        combinedbins=[]
-        n=0
-        for i in range(0,len(new_bin_edges)-1):
-            combinedbins.append([])
-            for u in range(n,len(self.bin_edges)):
-                if new_bin_edges[i+1] > self.bin_edges[u]:
-                    combinedbins[i].append(u)
-                else:
-                    n=u
-                    break
-        tmpdata=[]
-        tmperr=[]
-        for i in range(0,len(combinedbins)):
-            tmpdata.append(0)
-            tmperr.append(0)
-            for u in combinedbins[i]:
-                tmpdata[i] += self.entries[u]
-                tmperr[i] = tmperr[i]+pow(self.err[u],2)
-            tmperr[i] = np.sqrt(tmperr[i])
-        self.entries = np.array(tmpdata)
-        self.err = np.array(tmperr)
-        self.bin_edges = new_bin_edges
-        self._update_bins()
-        nomhist.rebin(new_bin_edges)
-        self.entries = np.array(self.entries)/np.array(copy.deepcopy(nomhist.entries))
-        self.err = np.array(self.err)/np.array(copy.deepcopy(nomhist.entries))    
-    
     
     def rebin(self, new_bin_edges):
         for name, hist in self.hists.items():
