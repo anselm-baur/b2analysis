@@ -209,7 +209,7 @@ class HistogramBase(PickleBase):
         self.range = (self.bin_edges[0], self.bin_edges[-1])
         self.bins = self.bin_centers.size
 
-
+    
     def rebin(self, new_bin_edges):
         new_bin_edges = np.array(new_bin_edges)
         for nbin in new_bin_edges:
@@ -224,6 +224,8 @@ class HistogramBase(PickleBase):
             tmpdata.append(0)
             tmperr.append(0)
             for u in combinedbins[i]:
+                if self.bin_edges[u]<new_bin_edges[0] or self.bin_edges[u]>new_bin_boarders[-1]:
+                    continue
                 tmpdata[i] += self.entries[u]
                 tmperr[i] = tmperr[i]+pow(self.err[u],2)
             tmperr[i] = np.sqrt(tmperr[i])
@@ -458,7 +460,7 @@ class HistogramCanvas(CanvasBase):
     def create_histogram(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
         """Create a histogram from data and add it to the stack"""
         self.add_histogram(Histogram(name, data, lumi, lumi_scale, is_signal=is_signal, **kwargs))
-
+        
 
     def rebin(self, new_bin_edges):
         for name, hist in self.hists.items():
@@ -835,14 +837,14 @@ class StackedHistogram(HistogramCanvas):
         else:
             return self.data_hist
 
-
+    
     def rebin(self, new_bin_edges):
         for name, hist in self.hists.items():
-            print(f"rebin {name} hist")
+            #print(f"rebin {name} hist")
             hist.rebin(new_bin_edges)
 
         if self.data_hist:
-            print(f"rebin {self.data_hist.name} hist")
+            #print(f"rebin {self.data_hist.name} hist")
             self.data_hist.rebin(new_bin_edges)
 
         self.bin_edges = np.array(new_bin_edges)
