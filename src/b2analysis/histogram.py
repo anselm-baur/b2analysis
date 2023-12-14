@@ -3,15 +3,36 @@ import numpy as np
 import matplotlib.pyplot as plt
 from b2style.b2figure import B2Figure
 import copy
+import pickle
 
 
-class CanvasBase(object):
+class PickleBase(object):
+    def copy(self):
+        return copy.deepcopy(self)
+
+    def pickle(self, file_name):
+        """If none serializable atributes are in one of the child classes, overwrite this method where a copy is created and the
+        respective atributes are removed and then dumped.
+        """
+        self.pickle_dump(file_name)
+
+
+    def pickle_dump(self, file_name):
+        if not file_name.endswith(".pickle"):
+            file_name += ".pickle"
+
+        with open(file_name, "wb") as handle:
+            pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+
+class CanvasBase(PickleBase):
 
     def __init__(self, name="hist_canvas", output_dir = "") -> None:
         self.output_dir = output_dir
         self.name=name
         self.fig = None
         self.ax = None
+        self.b2fig = None
 
     def savefig(self, filename=""):
         if not os.path.exists(self.output_dir):
@@ -20,12 +41,19 @@ class CanvasBase(object):
             filename = f"{self.name}.pdf"
         self.fig.savefig(os.path.join(self.output_dir, filename))
 
-    def copy(self):
-        return copy.deepcopy(self)
+
+    def pickle(self, file_name):
+        """Remove none searializable atributes.
+        """
+        self_copy = self.copy()
+        self_copy.fig = None
+        self_copy.ax = None
+        self_copy.b2fig = None
+        self_copy.pickle_dump(file_name)
 
 
 
-class HistogramBase(object):
+class HistogramBase(PickleBase):
     def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, weights=np.array([]), **kwargs):
         """Creates a HistogramBase object from either data points wich gets histogramed (is_hist=False) or form already binned data
         (is_hist=True).
@@ -292,12 +320,6 @@ class HistogramBase(object):
     def check_compatibility(self, other):
         assert np.array_equal(np.array(other.bin_edges, dtype=np.float32), self.bin_edges.astype(np.float32)), "Hist bin edges not compatible!"
         assert self.unit == other.unit, "Hist units not compatible!"
-
-
-    def copy(self):
-        return copy.deepcopy(self)
-
-
 
 
 class Histogram(HistogramBase):
@@ -572,8 +594,9 @@ class HistogramCanvas(CanvasBase):
         else:
             nhists = len(self.hists)
         linspace = np.linspace(cm_low,cm_high,nhists)
-
-        for name, color in zip(iter_histsts, cm(np.flip(linspace) if reverse else linspace)):
+        sorted_iter_hists = sorted(iter_histsts.items(), key=lambda item: item[1].entries.sum(), reverse=False)
+        for name_hist, color in zip(sorted_iter_hists, cm(np.flip(linspace) if reverse else linspace)):
+            name = name_hist[0]
             if self.hists[name].color:
                 self.colors[name] = self.hists[name].color
             else:
@@ -783,7 +806,7 @@ class StackedHistogram(HistogramCanvas):
             self.range = hist.range
             self.size = self.bin_centers.size
         else:
-            assert np.array_equal(hist.bin_edges, self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
+            assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), np.array(self.bin_edges, dtype=np.float32)), f"Hist bin edges not compatible with the rest of the stack! {hist.bin_edges} {hist.bin_edges.dtype} and {self.bin_edges} {self.bin_edges.dtype}"
         self.data_hist = hist
 
 
@@ -861,7 +884,7 @@ class StackedHistogram(HistogramCanvas):
         return self.fig, ax
 
 
-    def plot_ax(self, ax, reverse_colors=False, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, **kwargs):
+    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, **kwargs):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
             self.b2fig = B2Figure()
