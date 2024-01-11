@@ -209,7 +209,7 @@ class HistogramBase(PickleBase):
         self.range = (self.bin_edges[0], self.bin_edges[-1])
         self.bins = self.bin_centers.size
 
-    
+
     def rebin(self, new_bin_edges):
         new_bin_edges = np.array(new_bin_edges)
         for nbin in new_bin_edges:
@@ -224,7 +224,7 @@ class HistogramBase(PickleBase):
             tmpdata.append(0)
             tmperr.append(0)
             for u in combinedbins[i]:
-                if self.bin_edges[u]<new_bin_edges[0] or self.bin_edges[u]>new_bin_boarders[-1]:
+                if self.bin_edges[u]<new_bin_edges[0] or self.bin_edges[u]>new_bin_edges[-1]:
                     continue
                 tmpdata[i] += self.entries[u]
                 tmperr[i] = tmperr[i]+pow(self.err[u],2)
@@ -295,7 +295,7 @@ class HistogramBase(PickleBase):
     def __sub__(self, other):
         self.check_compatibility(other)
         diff_hist = self.copy()
-        diff_hist.entries -= other.entries
+        diff_hist.entries = diff_hist.entries - other.entries
         diff_hist.scale = 1
         diff_hist.weights = None
         diff_hist.name += " - " + other.name
@@ -306,7 +306,7 @@ class HistogramBase(PickleBase):
     def __add__(self, other):
         self.check_compatibility(other)
         add_hist = self.copy()
-        add_hist.entries += other.entries
+        add_hist.entries = add_hist.entries + other.entries
         add_hist.err = np.sqrt(self.err**2 + other.err**2)
         add_hist.scale = 1
         add_hist.weights = None
@@ -314,9 +314,24 @@ class HistogramBase(PickleBase):
         add_hist.update_hist()
         return add_hist
 
+
     def __truediv__(self, other):
+        """Division of two histograms without error correlation in the
+        uncertainties.
+        """
+        return self.corr_div(other, corr=0)
+
+
+    def corr_div(self, other, corr=1):
+        """Division of two histograms with allowed error correlation in the
+        uncertainties.
+        """
         self.check_compatibility(other)
-        return np.array(self.entries)/np.array(other.entries)
+        name = f"{self.name}/{other.name}"
+        data = np.array(self.entries)/np.array(other.entries)
+        err = np.sqrt((self.err/other.entries)**2+(other.err*self.entries/other.entries**2)**2-2*self.entries/other.entries**3*self.err*other.err*corr)
+        res_hist = Histogram(name, data, err=err, lumi=self.lumi, is_hist=True, bins=self.bin_edges )
+        return res_hist
 
 
     def check_compatibility(self, other):
@@ -402,7 +417,7 @@ class HistogramCanvas(CanvasBase):
     """Class to aggregate the Histogram objects and plot them
     for comparison."""
 
-    def __init__(self, lumi, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
+    def __init__(self, lumi=None, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
         super().__init__(**kwargs)
         self.lumi = lumi
         self.var = var
@@ -434,8 +449,11 @@ class HistogramCanvas(CanvasBase):
             self._update_bins()
         else:
             assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
-        if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
-            raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} not compatible with desired luminosity {self.lumi}")
+        if not self.lumi:
+            self.lumi = hist.lumi * hist.lumi_scale
+        else:
+            if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
+                raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} not compatible with desired luminosity {self.lumi}")
         self.hists[hist.name] = hist
         self.labels[hist.name] = label
         if color:
@@ -460,7 +478,7 @@ class HistogramCanvas(CanvasBase):
     def create_histogram(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
         """Create a histogram from data and add it to the stack"""
         self.add_histogram(Histogram(name, data, lumi, lumi_scale, is_signal=is_signal, **kwargs))
-        
+
 
     def rebin(self, new_bin_edges):
         for name, hist in self.hists.items():
@@ -497,19 +515,21 @@ class HistogramCanvas(CanvasBase):
             self.b2fig = B2Figure(auto_description=True, description=self.description)
             self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi, figsize=figsize)
 
-        self.plot_ax(self.ax, **kwargs)
+        self.plot_ax(self.ax, colors=self.colors, **kwargs)
         self.b2fig.shift_offset_text_position(self.ax)
-        self.add_labels(ax=self.ax)
+        if not pull_args:
+            xlabel = kwargs.get("xlabel", "")
+            self.add_labels(ax=self.ax, xlabel=xlabel)
 
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=None, reverse_colors=False):
+    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=None, reverse_colors=False, errorbar_args=None):
         if not colors:
             colors = []
         if len(colors) <  len(self.hists):
             if len(self.colors) <  len(self.hists):
-                print("create colors...")
+                print("create colors in plot_ax...")
                 self.color_scheme(reverse=reverse_colors)
             colors = self.colors
             print(colors)
@@ -518,15 +538,18 @@ class HistogramCanvas(CanvasBase):
         uncert_label = True
         for i, (name, hist) in enumerate(self.hists.items()):
             label = self.get_label(name)
+            if type(colors) == dict:
+                color = colors[name]
+            else:
+                color = colors[i]
             if histtype == "errorbar":
-                ax.errorbar(self.bin_centers, hist.entries, yerr=hist.err, label=name, **self.b2fig.errorbar_args)
+                if not errorbar_args:
+                    errorbar_args = self.b2fig.errorbar_args
+                ax.errorbar(self.bin_centers, hist.entries, yerr=hist.err, label=name, color=color, zorder=i*1000, **errorbar_args)
             elif histtype == "step":
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
                 y = np.concatenate([[0], hist.entries, [0]])
-                if type(colors) == dict:
-                    ax.step(x, y, label=label, lw=0.9, color=colors[name])
-                else:
-                    ax.step(x, y, label=label, lw=0.9, color=colors[i])
+                ax.step(x, y, label=label, lw=0.9, color=color)
                 uncert = hist.err
                 bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
                 ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
@@ -549,6 +572,12 @@ class HistogramCanvas(CanvasBase):
         #ax.legend(loc='upper left', prop={'size': 7})
         ax.legend()
         self.b2fig.shift_offset_text_position_old(ax)
+        if self.description["additional_info"]:
+            head_room_fac = 1.1
+            if log:
+                head_room_fac = 10
+            ylim=ax.get_ylim()
+            ax.set_ylim([ylim[0], ylim[1]*head_room_fac])
 
 
     def get_label(self, name):
@@ -829,15 +858,13 @@ class StackedHistogram(HistogramCanvas):
         :return: data point histogram
         :rtype: Histogram
         """
+        data_hist = copy.deepcopy(self.data_hist)
         if name:
-            data_hist = copy.deepcopy(self.data_hist)
             data_hist.name=name
             data_hist.label=name
-            return data_hist
-        else:
-            return self.data_hist
+        return data_hist
 
-    
+
     def rebin(self, new_bin_edges):
         for name, hist in self.hists.items():
             #print(f"rebin {name} hist")
