@@ -251,6 +251,14 @@ class HistogramBase(PickleBase):
         return combinedbins
 
 
+    def re_scale(self, factor):
+        self.entries *= factor
+        self.err *= factor
+        self.scale *= factor
+        # the stat_uncet function would return wrong results, so we delete it after re_scaling
+        self.stat_uncert = None
+
+
     def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
         if not fig and not ax:
             fig, ax = plt.subplots(ncols=1, nrows=1, dpi=dpi)
@@ -348,6 +356,12 @@ class Histogram(HistogramBase):
         self.lumi = lumi
         self.lumi_scale = lumi_scale # basically the weight of each event
         self.color = color
+
+
+    def re_scale(self, factor, update_lumi=False):
+        super().re_scale(factor)
+        if update_lumi:
+            lumi_scale *= factor
 
 
     def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
