@@ -18,8 +18,8 @@ class PickleBase(object):
 
 
     def pickle_dump(self, file_name):
-        if not file_name.endswith(".pickle"):
-            file_name += ".pickle"
+        if not file_name.endswith(".pickle") or not file_name.endswith(".pkl"):
+            file_name += ".pkl"
 
         with open(file_name, "wb") as handle:
             pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -466,8 +466,8 @@ class HistogramCanvas(CanvasBase):
         if not self.lumi:
             self.lumi = hist.lumi * hist.lumi_scale
         else:
-            if not np.round(hist.lumi * hist.lumi_scale, 1) == np.round(self.lumi, 1):
-                raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} not compatible with desired luminosity {self.lumi}")
+            if not np.round(hist.lumi * hist.lumi_scale, 2) == np.round(self.lumi, 2):
+                raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} ({np.round(hist.lumi * hist.lumi_scale, 2)}) not compatible with desired luminosity {np.round(self.lumi, 2)}")
         self.hists[hist.name] = hist
         self.labels[hist.name] = label
         if color:
