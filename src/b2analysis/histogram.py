@@ -253,6 +253,10 @@ class HistogramBase(PickleBase):
 
     def re_scale(self, factor):
         self.entries *= factor
+        """
+        sig_1/n_1 = sig_2/n_2
+        sig_2 = sig_1 * n_2/n_1 = sig_1*factor
+        """
         self.err *= factor
         self.scale *= factor
         # the stat_uncet function would return wrong results, so we delete it after re_scaling
@@ -1106,7 +1110,7 @@ class StackedHistogram(HistogramCanvas):
 
 
 def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additional_info="", output_dir="", log=True, pull_ylim=(0.8,1.2), pull_bar=True, fmt="o", savefig=False, suffix="",
-                        callback=None, xlabel="", **kwargs):
+                        callback=None, xlabel="", corr=0, **kwargs):
     """Creates a histogramCanvos object from noth histograms with a pull plot.
 
     :param name: name of the histogram canvas
@@ -1139,6 +1143,8 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
     :type callback: func, optional
     :param xlabel: x label text for the comparison plot
     :type xlabel: str, optional
+    :param corr: correlation between the histograms, for same statistical sample use 1, independent samples use 0
+    type corr: int, float
     :return: The resulting HistogramCanvas from both histograms
     :rtype: HistogramCanvas
     """
@@ -1165,7 +1171,8 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
                 "ylim": pull_ylim,
                 "pull_bar": pull_bar,
                 "fmt": fmt,
-                "xlabel": xlabel}
+                "xlabel": xlabel,
+                "corr": corr}
     unit_label = r" in $\mathbf{" + _hist_1.unit + r"}$" if _hist_1.unit else ""
     if additional_info:
         hist_canvas.description["additional_info"] = additional_info
