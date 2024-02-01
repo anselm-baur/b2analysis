@@ -407,6 +407,10 @@ class Histogram(HistogramBase):
         return ret_str
 
 
+    def info(self):
+        print(self.__str__())
+
+
     def serialize(self):
         """Create a serialized version of the histogram for storage in a file.
 
@@ -542,7 +546,7 @@ class HistogramCanvas(CanvasBase):
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=None, reverse_colors=False, errorbar_args=None):
+    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=None, reverse_colors=False, errorbar_args=None, **kwargs):
         if not colors:
             colors = []
         if len(colors) <  len(self.hists):
@@ -554,10 +558,11 @@ class HistogramCanvas(CanvasBase):
             print(self.hists.keys())
 
         uncert_label = True
+        plot_args = kwargs.get("plot_args", {})
         for i, (name, hist) in enumerate(self.hists.items()):
             label = self.get_label(name)
             if type(colors) == dict:
-                color = colors[name]
+                color = color = self.signal_color if hist.is_signal else colors[name]
             else:
                 color = colors[i]
             if histtype == "errorbar":
@@ -567,7 +572,9 @@ class HistogramCanvas(CanvasBase):
             elif histtype == "step":
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
                 y = np.concatenate([[0], hist.entries, [0]])
-                ax.step(x, y, label=label, lw=0.9, color=color)
+                if not "linewidth" in plot_args and not "lw" in plot_args:
+                    plot_args["lw"] = 0.9
+                ax.step(x, y, label=label, color=color, **plot_args)
                 uncert = hist.err
                 bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
                 ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
@@ -734,7 +741,7 @@ class HistogramCanvas(CanvasBase):
 
 
     def plot_pull_ax(self, ax, hist_name, nom_hist_name, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, fmt="o--",
-                     pull_bar=False, x_log=False):
+                     pull_bar=False, x_log=False, **kwargs):
         nom_hist = self.hists[nom_hist_name]
         bin_centers = nom_hist.bin_centers
         bin_edges = nom_hist.bin_edges
@@ -926,32 +933,47 @@ class StackedHistogram(HistogramCanvas):
         self.plot_ax(self.ax, **kwargs)
         self.b2fig.shift_offset_text_position(self.ax)
         self.add_labels(ax=self.ax)
-        self.plot_pull_ax(self.ax_pull, pull_args=pull_args, **kwargs)
+        self.plot_pull_ax(self.ax_pull, **pull_args, **kwargs)
 
         return self.fig, ax
 
 
-    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, **kwargs):
+    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, histtype=None, **kwargs):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
             self.b2fig = B2Figure()
 
         self.color_scheme(reverse=reverse_colors, cm=cm)
         colors=self.colors
+        plot_args = kwargs.get("plot_args", {})
 
         bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
         i=0
         for name, hist in sorted(self.hists.items(), key=lambda item: item[1].entries.sum(), reverse=False):
             color = self.signal_color if hist.is_signal else colors[name]
-            #print(f"stack {name}")
-            #ax.plot(self.bin_centers, stack+hist.entries, drawstyle="steps", color=colors[i], linewidth=0.5)
-            #ax.fill_between(self.bin_centers, stack, stack+hist.entries, label=name, step="mid",
-            #                linewidth=0, linestyle="-", color=color)
-            #ax.fill_between(self.bin_centers, stack, stack+hist.entries, label=name, step="mid",
-            #                linewidth=0, linestyle="-", color=color)
-            ax.bar(x=self.bin_centers, height=hist.entries, width=bin_width, bottom=stack,
-                color=color, edgecolor=color, lw=0.1,label=name)
+
+            if histtype == "step":
+                    x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
+                    y = np.concatenate([[0], stack+hist.entries, [0]])
+                    if not "linewidth" in plot_args and not "lw" in plot_args:
+                        plot_args["lw"] = 0.9
+                    ax.step(x, y, label=name, color=color, **plot_args)
+                    #uncert = hist.err
+                    #bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
+                    #ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
+                    #    edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
+                    #if uncert_label: uncert_label = False
+            else:
+
+                    #print(f"stack {name}")
+                    #ax.plot(self.bin_centers, stack+hist.entries, drawstyle="steps", color=colors[i], linewidth=0.5)
+                    #ax.fill_between(self.bin_centers, stack, stack+hist.entries, label=name, step="mid",
+                    #                linewidth=0, linestyle="-", color=color)
+                    #ax.fill_between(self.bin_centers, stack, stack+hist.entries, label=name, step="mid",
+                    #                linewidth=0, linestyle="-", color=color)
+                    ax.bar(x=self.bin_centers, height=hist.entries, width=bin_width, bottom=stack,
+                        color=color, edgecolor=color, lw=0.1,label=name)
 
             stack += hist.entries
             i += 1
@@ -961,8 +983,9 @@ class StackedHistogram(HistogramCanvas):
                 edgecolor=uncert_color,hatch="///////", fill=False, lw=0,label=uncert_label)
 
         if self.data_hist:
+            label = self.data_hist.label if self.data_hist.label else self.data_hist.name
             ax.errorbar(self.data_hist.bin_centers, self.data_hist.entries, yerr=self.data_hist.err,
-                        label="data", **self.errorbar_args)
+                        label=label, **self.errorbar_args)
 
         if log:
             ax.set_yscale("log")
@@ -977,7 +1000,7 @@ class StackedHistogram(HistogramCanvas):
         self.b2fig.shift_offset_text_position_old(ax)
 
 
-    def plot_pull_ax(self, ax, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, pull_args={}, **kwargs):
+    def plot_pull_ax(self, ax, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, **kwargs):
         data_hist = self.data_hist
         bin_centers = data_hist.bin_centers
         bin_edges = data_hist.bin_edges
@@ -1088,7 +1111,7 @@ class StackedHistogram(HistogramCanvas):
 
         if self.data_hist and other.data_hist:
             self_copy.data_hist += other.data_hist
-            self_copy.name = self.data_hist.name
+            self_copy.data_hist.name = self.data_hist.name
         elif not self.data_hist and other.data_hist:
             self_copy.add_data_histogram(other.data_hist)
 
@@ -1105,6 +1128,25 @@ class StackedHistogram(HistogramCanvas):
             return self.data_hist
         else:
             raise ValueError(f"{item} not a valid histogram!")
+
+
+    def __str__(self):
+        ret_str = "StackedHistogram Object:"
+        ret_str +="========================\n\n"
+
+        if self.data_hist:
+            ret_str += self.data_hist.__str__()
+            ret_str += "\n\n"
+        for name, hist in self.hists.items():
+            ret_str += hist.__str__()
+            ret_str += "\n\n"
+        return ret_str
+
+
+    def info(self):
+        print(self.__str__())
+
+
 
 
 
