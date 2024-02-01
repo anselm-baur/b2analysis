@@ -402,7 +402,10 @@ class Histogram(HistogramBase):
         ret_str += f"var: {self.var}\n"
         ret_str += f"bins: {self.bins}\n"
         ret_str += f"entries: {np.sum(self.entries):.0f}\n"
-        ret_str += f"weights: {np.mean(self.weights):.3f}\n"
+        if self.weights is not None:
+            ret_str += f"weights: {np.mean(self.weights):.3f}\n"
+        else:
+            ret_str += f"weights: None \n"
         ret_str += f"lumi: {self.lumi}"
         return ret_str
 
@@ -1131,7 +1134,7 @@ class StackedHistogram(HistogramCanvas):
 
 
     def __str__(self):
-        ret_str = "StackedHistogram Object:"
+        ret_str = "StackedHistogram Object:\n"
         ret_str +="========================\n\n"
 
         if self.data_hist:
