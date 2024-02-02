@@ -724,6 +724,30 @@ class HistogramCanvas(CanvasBase):
 
 
     def pull_plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", **kwargs):
+        """_summary_
+
+        :param dpi: _description_, defaults to 90
+        :type dpi: int, optional
+        :param figsize: _description_, defaults to (6,6)
+        :type figsize: tuple, optional
+        :param pull_args: _description_, defaults to {}
+        :type pull_args: dict, optional
+        :param additional_info: _description_, defaults to ""
+        :type additional_info: str, optional
+        :return: _description_
+        :rtype: _type_
+
+        Example how to use the pull_args:
+        pull_args = {"hist_name": [hist_name_1, hist_name_2, ...],
+                     "nom_hist_name": nom_hist_name,
+                     "ratio": True,
+                     "ylim": pull_ylim,
+                     "pull_bar": pull_bar,
+                     "fmt": fmt,
+                     "xlabel": xlabel,
+                     "ylabel":  r"$\mathbf{\frac{hist}{nom_hist}}$"
+                     "corr": corr}
+        """
         pull_args = copy.deepcopy(pull_args)
         self.b2fig = B2Figure(auto_description=False)
         self.fig, ax = self.b2fig.create(ncols=1, nrows=2, dpi=dpi, figsize=figsize, gridspec_kw={'height_ratios': [2, 1]})
