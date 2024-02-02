@@ -564,6 +564,12 @@ class HistogramCanvas(CanvasBase):
 
         uncert_label = True
         plot_args = kwargs.get("plot_args", {})
+        ncols_legend = plot_args.get("ncols", 1)
+        if "ncols" in plot_args:
+            del plot_args["ncols"]
+
+        print(plot_args)
+
         for i, (name, hist) in enumerate(self.hists.items()):
             label = self.get_label(name)
             if type(colors) == dict:
@@ -600,7 +606,7 @@ class HistogramCanvas(CanvasBase):
         ax.set_ylabel("events")
         self.b2fig.shift_offset_text_position(ax)
         #ax.legend(loc='upper left', prop={'size': 7})
-        ax.legend()
+        ax.legend(ncols=ncols_legend)
         self.b2fig.shift_offset_text_position_old(ax)
         if self.description["additional_info"]:
             head_room_fac = 1.1
@@ -951,6 +957,11 @@ class StackedHistogram(HistogramCanvas):
         self.color_scheme(reverse=reverse_colors, cm=cm)
         colors=self.colors
         plot_args = kwargs.get("plot_args", {})
+        ncols_legend = plot_args.get("ncols", 1)
+        if "ncols" in plot_args:
+            del plot_args["ncols"]
+
+        print(plot_args)
 
         bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
@@ -999,7 +1010,7 @@ class StackedHistogram(HistogramCanvas):
         if ylim:
             ax.set_ylim(ylim)
 
-        ax.legend()
+        ax.legend(ncols=ncols_legend)
         self.add_labels(ax=ax)
         ax.set_xlim(self.range)
         self.b2fig.shift_offset_text_position_old(ax)
