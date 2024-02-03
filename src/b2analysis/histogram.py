@@ -10,6 +10,39 @@ class PickleBase(object):
     def copy(self):
         return copy.deepcopy(self)
 
+
+    @staticmethod
+    def load(file_name, lumi=None, bins=None, serialized=False):
+        if serialized:
+            with open(file_name, "rb") as pkl:
+                hist_dict = pickle.load(pkl)
+            if hist_dict["class"] == "Histogram":
+                del_hist_dict["class"]
+                hist = Histogram(**hist_dict)
+            elif hist_dict["class"] == "StackedHistogram":
+                hist = StackedHistogram.from_serial(hist_dict)
+        else:
+            with open(file_name, "rb") as pkl:
+                hist = pickle.load(pkl)
+        if lumi:
+            hist.re_scale_to(lumi, update_lumi=True)
+        if not bins is None:
+            hist.rebin(bins)
+        return hist
+
+
+    def save(self, file_name):
+        if not file_name.endswith(".pickle") and not file_name.endswith(".pkl"):
+            file_name += ".pkl"
+        with open(file_name, "wb") as pkl:
+            pickle.dump(self.serialize(), pkl, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"pickled serialized: {file_name}")
+
+
+    def serialize(self):
+        raise NotImplementedError
+
+
     def pickle(self, file_name):
         """If none serializable atributes are in one of the child classes, overwrite this method where a copy is created and the
         respective atributes are removed and then dumped.
@@ -18,11 +51,12 @@ class PickleBase(object):
 
 
     def pickle_dump(self, file_name):
-        if not file_name.endswith(".pickle") or not file_name.endswith(".pkl"):
+        if not file_name.endswith(".pickle") and not file_name.endswith(".pkl"):
             file_name += ".pkl"
 
         with open(file_name, "wb") as handle:
             pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"pickled: {file_name}")
 
 
 class CanvasBase(PickleBase):
@@ -363,9 +397,18 @@ class Histogram(HistogramBase):
 
 
     def re_scale(self, factor, update_lumi=False):
+        """Rescale the histogram by a given factor.
+        """
         super().re_scale(factor)
         if update_lumi:
-            lumi_scale *= factor
+            self.lumi_scale *= factor
+
+
+    def re_scale_to(self, target_lumi, update_lumi=True):
+        """Rescale the histogram to the given target luminosity.
+        """
+        factor = target_lumi/self.lumi
+        self.re_scale(factor=factor, update_lumi=update_lumi)
 
 
     def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
@@ -422,7 +465,8 @@ class Histogram(HistogramBase):
         :return: the histogram content in strings and lists
         :rtype: dict
         """
-        ser_hist = {"name": self.name,
+        ser_hist = {"class": "Histogram",
+                    "name": self.name,
                     "data": list(self.entries),
                     "err": list(self.err),
                     "lumi": self.lumi,
@@ -446,6 +490,7 @@ class HistogramCanvas(CanvasBase):
 
     def __init__(self, lumi=None, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
         super().__init__(**kwargs)
+
         self.lumi = lumi
         self.var = var
         self.hists = {}
@@ -464,6 +509,17 @@ class HistogramCanvas(CanvasBase):
         self.signals = 0
         self.labels = {}
         self.colors = {}
+
+
+    #@property
+    #def lumi(self):
+    #    return self._lumi
+
+    #@lumi.setter
+    #def lumi(self, value):
+    #    self._lumi = value
+    #    self.description["luminosity"] = self.lumi
+
 
     def add_histogram(self, hist, label=True, color=None):
         """Add a histogram to the canvas."""
@@ -512,6 +568,27 @@ class HistogramCanvas(CanvasBase):
             hist.rebin(new_bin_edges)
         self.bin_edges = np.array(new_bin_edges)
         self._update_bins()
+
+
+    def re_scale(self, factor, update_lumi=True):
+        for hist in self.hists.values():
+            hist.re_scale(factor=factor, update_lumi=update_lumi)
+        if update_lumi:
+            self.set_lumi(self.lumi * factor)
+
+
+    def re_scale_to(self, target_lumi, update_lumi=True):
+        for hist in self.hists.values():
+            hist.re_scale_to(target_lumi=target_lumi, update_lumi=update_lumi)
+        if update_lumi:
+            self.set_lumi(target_lumi)
+
+
+    def set_lumi(self, lumi):
+        """When updating the luminosity we also want to set the description.
+        """
+        self.lumi = lumi
+        self.description["luminosity"] = self.lumi
 
 
     def plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", **kwargs):
@@ -567,8 +644,6 @@ class HistogramCanvas(CanvasBase):
         ncols_legend = plot_args.get("ncols", 1)
         if "ncols" in plot_args:
             del plot_args["ncols"]
-
-        print(plot_args)
 
         for i, (name, hist) in enumerate(self.hists.items()):
             label = self.get_label(name)
@@ -876,6 +951,9 @@ class StackedHistogram(HistogramCanvas):
         stacked_hist = StackedHistogram(**init_kwargs)
 
         for name, hist in serial_hist["hists"].items():
+            if not hist["class"] == "Histogram":
+                raise RuntimeError("Class Histogram expected, not {hist['class']}")
+            del hist["class"] # Histogram does not have an argurment class
             stacked_hist.add_histogram(Histogram(**hist))
         if "data_hist" in serial_hist:
                 stacked_hist.add_data_histogram(Histogram(**serial_hist["data_hist"]))
@@ -885,6 +963,10 @@ class StackedHistogram(HistogramCanvas):
     def add_histogram(self, hist):
         super().add_histogram(hist)
         self.__update()
+
+        # TODO: unify data hist
+        #if hist.name == "data":
+        #    self.data_hist = self.hists["data"]
 
 
     def add_data_histogram(self, hist):
@@ -939,6 +1021,20 @@ class StackedHistogram(HistogramCanvas):
         self.__update()
 
 
+    def re_scale(self, factor, update_lumi=True):
+        super().re_scale(factor=factor, update_lumi=update_lumi)
+        if self.data_hist:
+            self.data_hist.re_scale(factor=factor, update_lumi=update_lumi)
+        self.__update()
+
+
+    def re_scale_to(self, target_lumi, update_lumi=True):
+        super().re_scale_to(target_lumi=target_lumi, update_lumi=update_lumi)
+        if self.data_hist:
+            self.data_hist = re_scale_to(target_lumi=target_lumi, update_lumi=update_lumi)
+        self.__update()
+
+
     def plot(self, dpi=90,  xlabel="", ylabel="events", **kwargs):
         """Plot the stacked histogram"""
 
@@ -985,12 +1081,14 @@ class StackedHistogram(HistogramCanvas):
         if "ncols" in plot_args:
             del plot_args["ncols"]
 
-        print(plot_args)
-
         bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
         i=0
         for name, hist in sorted(self.hists.items(), key=lambda item: item[1].entries.sum(), reverse=False):
+            # handle the date hists separate
+            if name == "data":
+                continue
+
             color = self.signal_color if hist.is_signal else colors[name]
 
             if histtype == "step":
@@ -1084,11 +1182,17 @@ class StackedHistogram(HistogramCanvas):
     def get_stacked_entries(self):
         """Get the sum of the stacked entries per bin."""
         entries = np.zeros(self.bin_centers.size)
-        if len(self.hists) > 0:
-            for name, hist in self.hists.items():
-                entries += hist.entries
-        elif len(self.hists) ==0 and self.data_hist:
-            entries = self.data_hist.entries
+        if not self.data_hist:
+            if len(self.hists) > 0:
+                for name, hist in self.hists.items():
+                    entries += hist.entries
+        else:
+            if len(self.hists) > 1:
+                for name, hist in self.hists.items():
+                    if not name == "data":
+                        entries += hist.entries
+            else:
+                entries = self.data_hist.entries
         return entries
 
 
@@ -1107,6 +1211,7 @@ class StackedHistogram(HistogramCanvas):
     def serialize(self):
         serial_hist = {}
         serial_hist["name"] = self.name
+        serial_hist["class"] = "StackedHistogram"
         serial_hist["var"] = self.var
         serial_hist["unit"] = self.unit
         serial_hist["lumi"] = self.lumi
@@ -1117,9 +1222,6 @@ class StackedHistogram(HistogramCanvas):
 
         serial_hist["hists"] = {}
         for h_name, h in self.hists.items():
-            #serial_hist["hists"][h_name] = {"entries": list(h.entries),
-            #                                "err": list(h.err),
-            #                                "color": h.color}
             serial_hist["hists"][h_name] = h.serialize()
 
         if self.data_hist:
