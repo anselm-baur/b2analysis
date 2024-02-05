@@ -286,7 +286,7 @@ class HistogramBase(PickleBase):
 
 
     def re_scale(self, factor):
-        self.entries *= factor
+        self.entries = self.entries*factor
         """
         sig_1/n_1 = sig_2/n_2
         sig_2 = sig_1 * n_2/n_1 = sig_1*factor
@@ -1295,7 +1295,7 @@ class StackedHistogram(HistogramCanvas):
 
 
 def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additional_info="", output_dir="", log=True, pull_ylim=(0.8,1.2), pull_bar=True, fmt="o", savefig=False, suffix="",
-                        callback=None, xlabel="", corr=0, **kwargs):
+                        callback=None, xlabel="", corr=0, normalized=False, **kwargs):
     """Creates a histogramCanvos object from noth histograms with a pull plot.
 
     :param name: name of the histogram canvas
@@ -1345,6 +1345,11 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
     else:
         _hist_2.name = name_2
         _hist_2.label = name_2
+
+
+    if normalized:
+        scale_factor = _hist_2.entries.sum()/_hist_1.entries.sum()
+        _hist_1.re_scale(factor=scale_factor, update_lumi=False)
 
     hist_canvas = HistogramCanvas(lumi=_hist_1.lumi, name=name, output_dir=output_dir, **kwargs)
     hist_canvas.add_histogram(_hist_1)
