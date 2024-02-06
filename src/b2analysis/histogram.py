@@ -373,10 +373,11 @@ class HistogramBase(PickleBase):
         uncertainties.
         """
         self.check_compatibility(other)
-        name = f"{self.name}/{other.name}"
-        data = np.array(self.entries)/np.array(other.entries)
-        err = np.sqrt((self.err/other.entries)**2+(other.err*self.entries/other.entries**2)**2-2*self.entries/other.entries**3*self.err*other.err*corr)
-        res_hist = Histogram(name, data, err=err, lumi=self.lumi, is_hist=True, bins=self.bin_edges )
+        with np.errstate(divide='ignore',invalid='ignore'):
+            name = f"{self.name}/{other.name}"
+            data = np.array(self.entries)/np.array(other.entries)
+            err = np.sqrt((self.err/other.entries)**2+(other.err*self.entries/other.entries**2)**2-2*self.entries/other.entries**3*self.err*other.err*corr)
+            res_hist = Histogram(name, data, err=err, lumi=self.lumi, is_hist=True, bins=self.bin_edges )
         return res_hist
 
 
@@ -861,14 +862,16 @@ class HistogramCanvas(CanvasBase):
             nonlocal ylabel # idk why we need this here but without it will not find ylabel variable
             nonlocal pull_bar
             if ratio:
-                plot = hist.entries/nom_hist.entries
+                with np.errstate(divide='ignore',invalid='ignore'):
+                    plot = hist.entries/nom_hist.entries
                 if pull_bar:
                     self.plot_pull_bars(ax, bin_edges, plot-1, 1)
                 ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
                 if not ylabel:
                     ylabel = r"$\mathbf{\frac{"+hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}{"+nom_hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}}$"
             else:
-                plot = (hist.entries-nom_hist.entries)/nom_hist.entries
+                with np.errstate(divide='ignore',invalid='ignore'):
+                    plot = (hist.entries-nom_hist.entries)/nom_hist.entries
                 if pull_bar:
                     self.plot_pull_bars(ax, bin_edges, plot)
                 ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
@@ -876,7 +879,8 @@ class HistogramCanvas(CanvasBase):
                     hist_label = hist.name.replace("_",r"\_").replace(" ",r"\;")
                     nom_hist_label = nom_hist.name.replace("_",r"\_").replace(" ",r"\;")
                     ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
-            plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
+            with np.errstate(divide='ignore',invalid='ignore'):
+                plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
             ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
 
         if type(hist_name) == list:
@@ -1031,7 +1035,7 @@ class StackedHistogram(HistogramCanvas):
     def re_scale_to(self, target_lumi, update_lumi=True):
         super().re_scale_to(target_lumi=target_lumi, update_lumi=update_lumi)
         if self.data_hist:
-            self.data_hist = re_scale_to(target_lumi=target_lumi, update_lumi=update_lumi)
+            self.data_hist.re_scale_to(target_lumi=target_lumi, update_lumi=update_lumi)
         self.__update()
 
 
@@ -1144,18 +1148,21 @@ class StackedHistogram(HistogramCanvas):
         bin_edges = data_hist.bin_edges
 
         if ratio:
-            plot = self.get_stacked_entries()/data_hist.entries
+            with np.errstate(divide='ignore',invalid='ignore'):
+                plot = self.get_stacked_entries()/data_hist.entries
             ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
             self.plot_pull_bars(ax, bin_edges, plot-1, 1)
             if not ylabel:
                 ylabel = r"$\mathbf{\frac{MC}{data}}$"
         else:
-            plot = (self.get_stacked_entries().entries-data_hist.entries)/data_hist.entries
+            with np.errstate(divide='ignore',invalid='ignore'):
+                plot = (self.get_stacked_entries().entries-data_hist.entries)/data_hist.entries
             ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
             self.plot_pull_bars(ax, bin_edges, plot, 0)
             if not ylabel:
                 ylabel = r"$\mathbf{\frac{mc-data}{data}}$"
-        plot_err = np.sqrt((self.get_stat_uncert()/data_hist.entries)**2+(data_hist.err*self.get_stacked_entries()/data_hist.entries**2)**2-2*self.get_stacked_entries()/data_hist.entries**3*self.get_stat_uncert()*data_hist.err*corr)
+        with np.errstate(divide='ignore',invalid='ignore'):
+            plot_err = np.sqrt((self.get_stat_uncert()/data_hist.entries)**2+(data_hist.err*self.get_stacked_entries()/data_hist.entries**2)**2-2*self.get_stacked_entries()/data_hist.entries**3*self.get_stat_uncert()*data_hist.err*corr)
         ax.errorbar(bin_centers, plot, yerr=plot_err, **self.errorbar_args)
 
         ax.set_xlim(bin_edges[0], bin_edges[-1])
