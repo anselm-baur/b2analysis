@@ -17,7 +17,7 @@ class PickleBase(object):
             with open(file_name, "rb") as pkl:
                 hist_dict = pickle.load(pkl)
             if hist_dict["class"] == "Histogram":
-                del_hist_dict["class"]
+                del hist_dict["class"]
                 hist = Histogram(**hist_dict)
             elif hist_dict["class"] == "StackedHistogram":
                 hist = StackedHistogram.from_serial(hist_dict)
@@ -137,7 +137,7 @@ class HistogramBase(PickleBase):
             self.entries = np.array(data)
             self._update_bins()
             if "err" in kwargs:
-                self.err = np.array(kwargs["err"])
+                self.err = copy.deepcopy(np.array(kwargs["err"]))
                 self.stat_uncert = None #omit wrong uncertainty calculation
             else:
                 self.update_hist()
@@ -344,7 +344,8 @@ class HistogramBase(PickleBase):
         diff_hist.entries = diff_hist.entries - other.entries
         diff_hist.scale = 1
         diff_hist.weights = None
-        diff_hist.name += " - " + other.name
+        if not self.name == other.name:
+            diff_hist.name += " - " + other.name
         diff_hist.update_hist()
         return diff_hist
 
@@ -356,7 +357,8 @@ class HistogramBase(PickleBase):
         add_hist.err = np.sqrt(self.err**2 + other.err**2)
         add_hist.scale = 1
         add_hist.weights = None
-        add_hist.name += " + " + other.name
+        if not self.name == other.name:
+            add_hist.name += " + " + other.name
         add_hist.update_hist()
         return add_hist
 
@@ -437,6 +439,10 @@ class Histogram(HistogramBase):
         ax.legend()
 
         return fig, ax
+
+
+    def compare(self, other, **kwargs):
+        return compare_histograms(f"compare {self.label}", other, self, **kwargs)
 
 
     def __str__(self):
@@ -532,9 +538,9 @@ class HistogramCanvas(CanvasBase):
             self.size = self.bin_centers.size
             self._update_bins()
         else:
-            assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), "Hist bin edges not compatible with the rest of the stack!"
+            assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), f"Hist bin edges not compatible with the rest of the stack ({hist.bin_edges.size}, {self.bin_edges.size})!"
         if not self.lumi:
-            self.lumi = hist.lumi * hist.lumi_scale
+            self.set_lumi(hist.lumi * hist.lumi_scale)
         else:
             if not np.round(hist.lumi * hist.lumi_scale, 2) == np.round(self.lumi, 2):
                 raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} ({np.round(hist.lumi * hist.lumi_scale, 2)}) not compatible with desired luminosity {np.round(self.lumi, 2)}")
@@ -624,6 +630,7 @@ class HistogramCanvas(CanvasBase):
         self.b2fig.shift_offset_text_position(self.ax)
         if not pull_args:
             xlabel = kwargs.get("xlabel", "")
+            print("xlabel:", xlabel)
             self.add_labels(ax=self.ax, xlabel=xlabel)
 
         return self.fig, self.ax
@@ -671,7 +678,9 @@ class HistogramCanvas(CanvasBase):
                 raise ValueError(f"histtype {histtype} not implemented!")
         ax.set_xlim((*self.range))
         if xlabel:
-            ax.set_xlabel(xlabel)
+            #ax.set_xlabel(xlabel)
+            # is now set outside
+            pass
         if x_log:
             ax.set_xscale("symlog")
         else:
@@ -930,7 +939,7 @@ class HistogramCanvas(CanvasBase):
 class StackedHistogram(HistogramCanvas):
     """Class to aggregate the Histogram objects and stack them."""
 
-    def __init__(self, lumi, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, name="stacked_histogram", **kwargs):
+    def __init__(self, lumi=None, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, name="stacked_histogram", **kwargs):
         super().__init__(lumi, var, unit, additional_info, is_simulation, is_preliminary, name=name, **kwargs)
         self.data_hist = None
         self.errorbar_args = {"fmt":'o',
@@ -1076,6 +1085,7 @@ class StackedHistogram(HistogramCanvas):
     def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, histtype=None, **kwargs):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
+            print("create b2figure")
             self.b2fig = B2Figure()
 
         self.color_scheme(reverse=reverse_colors, cm=cm)
@@ -1120,9 +1130,10 @@ class StackedHistogram(HistogramCanvas):
             stack += hist.entries
             i += 1
 
-        uncert = self.get_stat_uncert()
-        ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=stack-uncert,
-                edgecolor=uncert_color,hatch="///////", fill=False, lw=0,label=uncert_label)
+        if (len(self.hists) > 1 and self.data_hist) or (len(self.hists) > 0 and not self.data_hist):
+            uncert = self.get_stat_uncert()
+            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=stack-uncert,
+                    edgecolor=uncert_color,hatch="///////", fill=False, lw=0,label=uncert_label)
 
         if self.data_hist:
             label = self.data_hist.label if self.data_hist.label else self.data_hist.name
@@ -1210,6 +1221,15 @@ class StackedHistogram(HistogramCanvas):
         return self.data_hist.entries/self.get_hist().entries
 
 
+    def compare(self, other, **kwargs):
+        for name, hist in self.hists.items():
+            if not name in other.hists:
+                print(f"{name} not in other hists!")
+                continue
+            else:
+                hist.compare(other[name], **kwargs)
+
+
     def __update(self):
         self.entries = self.get_stacked_entries()
         self.err = self.get_stat_uncert()
@@ -1273,8 +1293,8 @@ class StackedHistogram(HistogramCanvas):
             return self.hists[item]
         elif item == "data":
             return self.data_hist
-        elif item == self.data_hist.name:
-            return self.data_hist
+        #elif item == self.data_hist.name:
+        #    return self.data_hist
         else:
             raise ValueError(f"{item} not a valid histogram!")
 
@@ -1342,6 +1362,13 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
     """
     _hist_1 = copy.deepcopy(hist_1)
     _hist_2 = copy.deepcopy(hist_2)
+
+    if _hist_1.name == _hist_2.name:
+        _hist_1.name += "_1"
+        _hist_1.label += "_1"
+        _hist_2.name += "_2"
+        _hist_2.label += "_2"
+
     if not name_1:
         name_1 = _hist_1.name
     else:
@@ -1358,7 +1385,7 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
         scale_factor = _hist_2.entries.sum()/_hist_1.entries.sum()
         _hist_1.re_scale(factor=scale_factor, update_lumi=False)
 
-    hist_canvas = HistogramCanvas(lumi=_hist_1.lumi, name=name, output_dir=output_dir, **kwargs)
+    hist_canvas = HistogramCanvas(lumi=_hist_1.lumi*_hist_1.lumi_scale, name=name, output_dir=output_dir, **kwargs)
     hist_canvas.add_histogram(_hist_1)
     hist_canvas.add_histogram(_hist_2)
 
