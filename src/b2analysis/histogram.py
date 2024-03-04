@@ -1153,19 +1153,26 @@ class StackedHistogram(HistogramCanvas):
         self.b2fig.shift_offset_text_position_old(ax)
 
 
-    def plot_pull_ax(self, ax, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, **kwargs):
+    def plot_pull_ax(self, ax, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, normalized=False, **kwargs):
         data_hist = self.data_hist
         bin_centers = data_hist.bin_centers
         bin_edges = data_hist.bin_edges
 
         if ratio:
             with np.errstate(divide='ignore',invalid='ignore'):
-                plot = self.get_stacked_entries()/data_hist.entries
+                scale_factor = 1
+                norm_label = ""
+                if normalized:
+                    # we are only interested in the shape difference
+                    scale_factor = self.get_stacked_entries().sum()/data_hist.entries.sum()
+                    norm_label = "norm. "
+                plot = data_hist.entries/self.get_stacked_entries()*scale_factor
             ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
             self.plot_pull_bars(ax, bin_edges, plot-1, 1)
             if not ylabel:
-                ylabel = r"$\mathbf{\frac{MC}{data}}$"
+                ylabel = norm_label + r"$\mathbf{\frac{data}{MC}}$"
         else:
+            # FIXME: this is still mc over data -> data over mc
             with np.errstate(divide='ignore',invalid='ignore'):
                 plot = (self.get_stacked_entries().entries-data_hist.entries)/data_hist.entries
             ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
