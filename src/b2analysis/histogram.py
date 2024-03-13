@@ -478,7 +478,7 @@ class Histogram(HistogramBase):
                     "err": list(self.err),
                     "lumi": self.lumi,
                     "bins": list(self.bin_edges),
-                    "lumi_scale": self.scale,
+                    "lumi_scale": self.lumi_scale,
                     #"weights": list(self.weights), # makes no sence to write out the weigts e.g. from single events... event information is anyways already lost
                     "var": self.var,
                     "unit": self.unit,
@@ -969,7 +969,9 @@ class StackedHistogram(HistogramCanvas):
             del hist["class"] # Histogram does not have an argurment class
             stacked_hist.add_histogram(Histogram(**hist))
         if "data_hist" in serial_hist:
-                stacked_hist.add_data_histogram(Histogram(**serial_hist["data_hist"]))
+                if "data" in serial_hist["data_hist"]:
+                    print(serial_hist["data_hist"])
+                    stacked_hist.add_data_histogram(Histogram(**serial_hist["data_hist"]))
         return stacked_hist
 
 
