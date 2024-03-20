@@ -756,59 +756,7 @@ class HistogramCanvas(CanvasBase):
         self.signal_color = plt.cm.seismic(0.9)
 
 
-    def pull_plot_old(self, ax, hist_name, nom_hist_name, color='black', ratio=True, corr=0, xlabel="", ylabel="", ylim=None, fmt="o--", pull_bar=False):
-        nom_hist = self.hists[nom_hist_name]
-        bin_centers = nom_hist.bin_centers
-        bin_edges = nom_hist.bin_edges
-        bins = nom_hist.size
-
-        def plot_pull_bars(y, bottom=0):
-            widths = bin_edges[1:]-bin_edges[:-1]
-            ax.bar(bin_edges[:-1], y, widths, align="edge", color="lightgrey", bottom=bottom, zorder=0)
-
-        def iterate_plot(hist, hist_color):
-            nonlocal ylabel # idk why we need this here but without it will not find ylabel variable
-            nonlocal pull_bar
-            if ratio:
-                plot = hist.entries/nom_hist.entries
-                if pull_bar:
-                    self.plot_pull_bars(ax, bin_edges, plot-1, 1)
-                ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
-                if not ylabel:
-                    ylabel = r"$\mathbf{\frac{"+hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}{"+nom_hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}}$"
-            else:
-                plot = (hist.entries-nom_hist.entries)/nom_hist.entries
-                if pull_bar:
-                    self.plot_pull_bars(ax, bin_edges, plot)
-                ax.plot((bin_edges[0], bin_edges[-1]),[0,0], color='black', ls="-")
-                if not ylabel:
-                    hist_label = hist.name.replace("_",r"\_").replace(" ",r"\;")
-                    nom_hist_label = nom_hist.name.replace("_",r"\_").replace(" ",r"\;")
-                    ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
-            plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
-            ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
-
-        if type(hist_name) == list:
-            if type(color) != dict and len(color) != len(hist_name):
-                #print("WARNING: color must have the same type and size as hist_name! -> gonna create new color scheme...")
-                #self.color_scheme()
-                # we use the default canvas colors
-               color = self.colors
-            for name in hist_name:
-                hist = self.hists[name]
-                iterate_plot(hist, color[name])
-        else:
-            iterate_plot(self.hists[hist_name], color)
-
-
-        ax.set_xlim(bin_edges[0], bin_edges[-1])
-        if ylim:
-            ax.set_ylim(ylim)
-        ax.set_ylabel(ylabel)
-        ax.set_xlabel(xlabel)
-
-
-    def pull_plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", **kwargs):
+    def pull_plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", height_ratios=None, **kwargs):
         """_summary_
 
         :param dpi: _description_, defaults to 90
@@ -819,6 +767,8 @@ class HistogramCanvas(CanvasBase):
         :type pull_args: dict, optional
         :param additional_info: _description_, defaults to ""
         :type additional_info: str, optional
+        :param height_ratios: set the height ratios of the subplots
+        :type height_args: list, tupel, optional, defaults to [2,1]
         :return: _description_
         :rtype: _type_
 
@@ -835,7 +785,9 @@ class HistogramCanvas(CanvasBase):
         """
         pull_args = copy.deepcopy(pull_args)
         self.b2fig = B2Figure(auto_description=False)
-        self.fig, ax = self.b2fig.create(ncols=1, nrows=2, dpi=dpi, figsize=figsize, gridspec_kw={'height_ratios': [2, 1]})
+        if height_ratios is None:
+            height_ratios = [2, 1]
+        self.fig, ax = self.b2fig.create(ncols=1, nrows=2, dpi=dpi, figsize=figsize, gridspec_kw={'height_ratios': height_ratios})
         self.ax = ax[0]
         if additional_info:
                 self.description["additional_info"] = additional_info
