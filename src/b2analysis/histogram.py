@@ -804,7 +804,7 @@ class HistogramCanvas(CanvasBase):
         if "x_log" in kwargs:
             pull_args["x_log"] = kwargs["x_log"]
             #print(pull_args["x_log"])
-        self.plot_pull_ax(self.ax_pull, **pull_args)
+        self.plot_pull_ax(self.ax_pull, **pull_args, **kwargs)
 
         self.ax.set_xticklabels([])
         self.fig.subplots_adjust(hspace=0.05)
@@ -1015,7 +1015,7 @@ class StackedHistogram(HistogramCanvas):
         return self.fig, self.ax
 
 
-    def pull_plot(self, dpi=90, figsize=(6,6), pull_args={}, **kwargs):
+    def pull_plot_bak(self, dpi=90, figsize=(6,6), pull_args={}, **kwargs):
         """Plot stacked histogram and a pull distribution.
         """
         self.b2fig = B2Figure(auto_description=False)
