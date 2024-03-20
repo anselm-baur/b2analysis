@@ -133,7 +133,7 @@ class HistogramBase(PickleBase):
             if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
                 print(f"failed, len(data)+1 = {len(list(data))+1} == len(bins) = {len(list(kwargs['bins']))}")
                 raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
-            self.bin_edges = kwargs["bins"]
+            self.bin_edges = np.array(kwargs["bins"])
             self.entries = np.array(data)
             self._update_bins()
             if "err" in kwargs:
@@ -149,7 +149,7 @@ class HistogramBase(PickleBase):
             if not overflow_bin:
                 np_hist = np.histogram(data, weights=self.weights, **kwargs)
                 self.entries = np_hist[0]
-                self.bin_edges = np_hist[1]
+                self.bin_edges = np.array(np_hist[1])
                 self._update_bins()
                 self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
 
@@ -251,7 +251,7 @@ class HistogramBase(PickleBase):
 
 
     def _update_bins(self):
-        self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
+        self.bin_centers = np.around(np.array((self.bin_edges[1:]+self.bin_edges[:-1])/2, dtype=np.float64), 3)
         self.range = (self.bin_edges[0], self.bin_edges[-1])
         self.bins = self.bin_centers.size
 
