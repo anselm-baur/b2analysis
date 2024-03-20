@@ -133,7 +133,7 @@ class HistogramBase(PickleBase):
             if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
                 print(f"failed, len(data)+1 = {len(list(data))+1} == len(bins) = {len(list(kwargs['bins']))}")
                 raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
-            self.bin_edges = np.array(kwargs["bins"])
+            self.bin_edges = kwargs["bins"]
             self.entries = np.array(data)
             self._update_bins()
             if "err" in kwargs:
@@ -181,6 +181,18 @@ class HistogramBase(PickleBase):
 
             self.size = self.bin_centers.size
             self.update_hist()
+
+        self.bin_edges = np.around(np.array(self.bin_edges, dtype=np.float64), 3)
+
+
+   # breaks the pickled histogram object
+   #@property
+   #def bin_edges(self):
+   #    return self._bin_edges
+   #
+   #@bin_edges.setter
+   #def bin_edges(self, value):
+   #    self._bin_edges = np.around(np.array(value, dtype=np.float64), 3)
 
 
     def calc_weighted_uncert(self, data, weights, bin_edges):
@@ -248,8 +260,9 @@ class HistogramBase(PickleBase):
         new_bin_edges = np.array(new_bin_edges)
         for nbin in new_bin_edges:
             if nbin not in self.bin_edges:
-                print("New bin boarders need to agree with old bin boarders")
-                return
+                print("present bins", self.bin_edges, 2, type(self.bin_edges))
+                print("new bins", new_bin_edges, 2, type(new_bin_edges))
+                raise RuntimeError("New bin edges need to intersect with old bin edges!")
 
         combinedbins = self.get_combined_bins(new_bin_edges)
         tmpdata=[]
@@ -258,8 +271,12 @@ class HistogramBase(PickleBase):
             tmpdata.append(0)
             tmperr.append(0)
             for u in combinedbins[i]:
-                if self.bin_edges[u]<new_bin_edges[0] or self.bin_edges[u]>new_bin_edges[-1]:
+                if np.round(self.bin_edges[u],4)<new_bin_edges[0] or np.round(self.bin_edges[u],4)>new_bin_edges[-1]:
+                    #print("continue because")
+                    edges = self.bin_edges[u]
+                    #print(f"{edges}<{new_bin_edges[0]} or {edges}>{new_bin_edges[-1]}")
                     continue
+                #print(u, self.entries[u])
                 tmpdata[i] += self.entries[u]
                 tmperr[i] = tmperr[i]+pow(self.err[u],2)
             tmperr[i] = np.sqrt(tmperr[i])
@@ -267,7 +284,6 @@ class HistogramBase(PickleBase):
         self.err = np.array(tmperr)
         self.bin_edges = new_bin_edges
         self._update_bins()
-
         #print(len(list(self.entries)), len(list(self.bin_edges)))
 
 
