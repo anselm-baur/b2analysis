@@ -257,7 +257,7 @@ class HistogramBase(PickleBase):
 
 
     def rebin(self, new_bin_edges):
-        new_bin_edges = np.array(new_bin_edges)
+        new_bin_edges = np.around(np.array(new_bin_edges, dtype=np.float64),3)
         for nbin in new_bin_edges:
             if nbin not in self.bin_edges:
                 print("present bins", self.bin_edges, 2, type(self.bin_edges))
