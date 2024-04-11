@@ -182,7 +182,7 @@ class HistogramBase(PickleBase):
             self.size = self.bin_centers.size
             self.update_hist()
 
-        self.bin_edges = np.around(np.array(self.bin_edges, dtype=np.float64), 3)
+        self.bin_edges = np.around(np.array(self.bin_edges, dtype=np.float64), 5)
 
 
    # breaks the pickled histogram object
@@ -251,13 +251,13 @@ class HistogramBase(PickleBase):
 
 
     def _update_bins(self):
-        self.bin_centers = np.around(np.array((self.bin_edges[1:]+self.bin_edges[:-1])/2, dtype=np.float64), 3)
+        self.bin_centers = np.around(np.array((self.bin_edges[1:]+self.bin_edges[:-1])/2, dtype=np.float64), 5)
         self.range = (self.bin_edges[0], self.bin_edges[-1])
         self.bins = self.bin_centers.size
 
 
     def rebin(self, new_bin_edges):
-        new_bin_edges = np.around(np.array(new_bin_edges, dtype=np.float64),3)
+        new_bin_edges = np.around(np.array(new_bin_edges, dtype=np.float64),5)
         for nbin in new_bin_edges:
             if nbin not in self.bin_edges:
                 print("present bins", self.bin_edges, 2, type(self.bin_edges))
@@ -323,10 +323,12 @@ class HistogramBase(PickleBase):
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.entries, [0]])
             ax.step(x, y, label=self.label, lw=0.9)
-            uncert = np.sqrt(self.entries)
+            uncert = self.err
+            print(uncert)
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
             ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
-                    edgecolor="grey",hatch="///////", fill=False, lw=0,label="stat. unc." if uncert_label else "")
+                    edgecolor="grey",hatch="///////", fill=False,
+                    lw=0,label="stat. unc." if uncert_label else "")
             if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
         ax.set_xlim((*self.range))
@@ -430,7 +432,7 @@ class Histogram(HistogramBase):
         self.re_scale(factor=factor, update_lumi=update_lumi)
 
 
-    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False):
+    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False, ylim=False):
         b2fig = B2Figure()
         if not fig and not ax:
             fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
@@ -441,13 +443,16 @@ class Histogram(HistogramBase):
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.entries, [0]])
             ax.step(x, y, label=self.label, lw=0.9)
-            uncert = np.sqrt(self.entries)
+            uncert = self.err
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
             ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
                     edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
             if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
         ax.set_xlim((*self.range))
+        if ylim:
+            span = self.entries.max() - self.entries.min()
+            ax.set_ylim([(self.entries-self.err).min()-span*0.3, (self.entries+self.err).max()+span*0.3])
         ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
         ax.set_ylabel("events")
         if log:
@@ -1366,18 +1371,20 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
     hist_canvas.add_histogram(_hist_1)
     hist_canvas.add_histogram(_hist_2)
 
+    unit_label = r" in $\mathbf{" + _hist_1.unit + r"}$" if _hist_1.unit else ""
+
     pull_args = {"hist_name": name_1,
                 "nom_hist_name": name_2,
                 "ratio": True,
                 "ylim": pull_ylim,
                 "pull_bar": pull_bar,
                 "fmt": fmt,
-                "xlabel": xlabel,
+                "xlabel": xlabel if xlabel else f"{_hist_1.var}" + unit_label,
                 "corr": corr}
-    unit_label = r" in $\mathbf{" + _hist_1.unit + r"}$" if _hist_1.unit else ""
+
     if additional_info:
         hist_canvas.description["additional_info"] = additional_info
-    fig, ax = hist_canvas.pull_plot(xlabel=f"{_hist_1.var}" + unit_label, histtype="step", figsize=(6,5),
+    fig, ax = hist_canvas.pull_plot(histtype="step", figsize=(6,5),
                     log=log, colors=["blue", "red"], pull_args=pull_args)
 
     if callback:
