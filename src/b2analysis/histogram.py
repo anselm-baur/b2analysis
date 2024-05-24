@@ -538,6 +538,13 @@ class HistogramCanvas(CanvasBase):
         self.labels = {}
         self.colors = {}
 
+        self.pull_args = {"hist_name": [],
+                "nom_hist_name": None,
+                "ratio": True,
+                "ylim": [0.99, 1.01],
+                "pull_bar": False,
+                "corr": 1}
+
 
     #@property
     #def lumi(self):
@@ -567,7 +574,7 @@ class HistogramCanvas(CanvasBase):
                 raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} ({np.round(hist.lumi * hist.lumi_scale, 2)}) not compatible with desired luminosity {np.round(self.lumi, 2)}")
         self.hists[hist.name] = hist
         self.labels[hist.name] = label
-        if color:
+        if color is not None:
             self.colors[hist.name] = color
         elif hist.color:
             self.colors[hist.name] = hist.color
@@ -575,6 +582,12 @@ class HistogramCanvas(CanvasBase):
             self.signals += 1
         self.__update()
 
+        #pre-fill pull args for pull plot
+        if hasattr(self, "pull_args"):
+            if self.pull_args["nom_hist_name"] is None:
+                self.pull_args["nom_hist_name"]=hist.name
+            else:
+                self.pull_args["hist_name"].append(hist.name)
 
     def __update(self):
         pass
@@ -777,7 +790,7 @@ class HistogramCanvas(CanvasBase):
         self.signal_color = plt.cm.seismic(0.9)
 
 
-    def pull_plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", height_ratios=None, **kwargs):
+    def pull_plot(self, dpi=90, figsize=(6,6), pull_args=None, additional_info="", height_ratios=None, pull_ylim=None, **kwargs):
         """_summary_
 
         :param dpi: _description_, defaults to 90
@@ -805,6 +818,14 @@ class HistogramCanvas(CanvasBase):
                      "corr": corr}
         """
         pull_args = copy.deepcopy(pull_args)
+        if pull_args is None:
+            pull_args = self.pull_args
+        else:
+            for pull_arg_key in self.pull_args.keys():
+                if not pull_arg_key in pull_args:
+                    pull_args[pull_arg_key] = self.pull_args[pull_arg_key]
+        if not pull_ylim is None:
+            pull_args["ylim"] = pull_ylim
         self.b2fig = B2Figure(auto_description=False)
         if height_ratios is None:
             height_ratios = [2, 1]
@@ -971,7 +992,7 @@ class StackedHistogram(HistogramCanvas):
         self.data_hist = hist
 
 
-    def get_hist(self, name=""):
+    def get_hist(self, name="", label=""):
         """Return the stacked entries as histogram
 
         :return: stacked histogram
@@ -979,7 +1000,49 @@ class StackedHistogram(HistogramCanvas):
         """
         if not name:
             name=self.name
-        return Histogram(name, self.entries, var=self.var, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True, label=name)
+        if not label:
+            label=name
+        return Histogram(name, self.entries, var=self.var, lumi=self.lumi, bins=self.bin_edges, err=self.err, is_hist=True, label=label)
+
+
+    def get_sig_hist(self, name=""):
+        """Return the stacked signal entries as histogram
+
+        :return: stacked histogram
+        :rtype: Histogram
+        """
+        if not name:
+            name=self.name+"_sig"
+        h = None
+        for _h_name, _h in self.hists.items():
+            if _h.is_signal:
+                if h is None:
+                    h = copy.deepcopy(_h)
+                else:
+                    h = h + _h
+        h.label = name
+        h.name = name
+        return h
+
+
+    def get_bkg_hist(self, name=""):
+        """Return the stacked backgournd entries as histogram
+
+        :return: stacked histogram
+        :rtype: Histogram
+        """
+        if not name:
+            name=self.name+"_bkg"
+        h = None
+        for _h_name, _h in self.hists.items():
+            if not _h.is_signal and not _h_name == "data":
+                if h is None:
+                    h = copy.deepcopy(_h)
+                else:
+                    h = h + _h
+        h.label = name
+        h.name = name
+        return h
 
 
     def get_data_hist(self, name=""):
@@ -1191,8 +1254,8 @@ class StackedHistogram(HistogramCanvas):
                 for name, hist in self.hists.items():
                     if not name == "data":
                         entries += hist.entries
-            else:
-                entries = self.data_hist.entries
+            #else:
+            #    entries = self.data_hist.entries
         return entries
 
 
@@ -1200,7 +1263,13 @@ class StackedHistogram(HistogramCanvas):
         """Get the ratio of stack/data per bin. This ratio can be used to apply to the simulation data
         to reweight the histogram.
         """
-        return self.data_hist.entries/self.get_hist().entries
+        return self.data_hist.entries/self.entries
+
+
+    def get_ratio_err(self, corr=0):
+        data_hist = self.data_hist
+        with np.errstate(divide='ignore',invalid='ignore'):
+            return np.sqrt((self.get_stat_uncert()/data_hist.entries)**2+(data_hist.err*self.get_stacked_entries()/data_hist.entries**2)**2-2*self.get_stacked_entries()/data_hist.entries**3*self.get_stat_uncert()*data_hist.err*corr)
 
 
     def compare(self, other, **kwargs):
