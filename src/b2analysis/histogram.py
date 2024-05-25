@@ -68,6 +68,12 @@ class CanvasBase(PickleBase):
         self.ax = None
         self.b2fig = None
 
+        self.errorbar_args = {"fmt":'o',
+                              "color": "black",
+                              "markersize": 3.3, #2.2,
+                              "elinewidth": 1.5, #0.5
+                              }
+
     def savefig(self, filename=""):
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
@@ -670,7 +676,7 @@ class HistogramCanvas(CanvasBase):
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, xlabel="", histtype="errorbar", log=False, x_log=False, colors=None, reverse_colors=False, errorbar_args=None, **kwargs):
+    def plot_ax(self, ax, xlabel="", histtype="hatch", log=False, x_log=False, colors=None, reverse_colors=False, errorbar_args=None, **kwargs):
         if not colors:
             colors = []
         if len(colors) <  len(self.hists):
@@ -687,6 +693,7 @@ class HistogramCanvas(CanvasBase):
         if "ncols" in plot_args:
             del plot_args["ncols"]
 
+        base_line = np.zeros(self.bin_centers.size+2)
         for i, (name, hist) in enumerate(self.hists.items()):
             label = self.get_label(name)
             if type(colors) == dict:
@@ -708,6 +715,18 @@ class HistogramCanvas(CanvasBase):
                 ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
                        edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
                 if uncert_label: uncert_label = False
+            elif histtype == "hatch":
+                x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
+                y1 = base_line
+                y2 = np.concatenate([[0], hist.entries, [0]])
+                if not "linewidth" in plot_args and not "lw" in plot_args:
+                    plot_args["lw"] = 0.9
+                if i%2 == 0:
+                    hatch = "/////"
+                else:
+                    hatch = "\\\\\\\\\\"
+                ax.fill_between(x, y1, y2,  color=color, **plot_args, hatch=hatch,  step='pre', facecolor="white", alpha=0.5)
+                ax.step(x, y2, label=name, color=color, lw=1.2)
             else:
                 raise ValueError(f"histtype {histtype} not implemented!")
         ax.set_xlim((*self.range))
@@ -771,12 +790,15 @@ class HistogramCanvas(CanvasBase):
         cm_low = 0.1
         cm_high = 0.8
 
+        self.signal_color = plt.cm.seismic(0.9)
+
         if exclude_signals:
             nhists = len(self.hists)-self.signals
             signals = self.get_signal_names()
             iter_histsts = copy.deepcopy(self.hists)
             for sig in signals:
                 del(iter_histsts[sig])
+                self.colors[sig] = self.signal_color
         else:
             nhists = len(self.hists)
         linspace = np.linspace(cm_low,cm_high,nhists)
@@ -787,7 +809,8 @@ class HistogramCanvas(CanvasBase):
                 self.colors[name] = self.hists[name].color
             else:
                 self.colors[name] = color
-        self.signal_color = plt.cm.seismic(0.9)
+
+
 
 
     def pull_plot(self, dpi=90, figsize=(6,6), pull_args=None, additional_info="", height_ratios=None, pull_ylim=None, **kwargs):
@@ -936,11 +959,6 @@ class StackedHistogram(HistogramCanvas):
     def __init__(self, lumi=None, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, name="stacked_histogram", **kwargs):
         super().__init__(lumi, var, unit, additional_info, is_simulation, is_preliminary, name=name, **kwargs)
         self.data_hist = None
-        self.errorbar_args = {"fmt":'o',
-                              "color": "black",
-                              "markersize": 2.2,
-                              "elinewidth": 0.5
-                              }
         self.__update()
 
 
@@ -1099,28 +1117,8 @@ class StackedHistogram(HistogramCanvas):
         return self.fig, self.ax
 
 
-    def pull_plot_bak(self, dpi=90, figsize=(6,6), pull_args={}, **kwargs):
-        """Plot stacked histogram and a pull distribution.
-        """
-        self.b2fig = B2Figure(auto_description=False)
-        self.fig, ax = self.b2fig.create(ncols=1, nrows=2, dpi=dpi, figsize=figsize, gridspec_kw={'height_ratios': [2, 1]})
-        self.ax = ax[0]
-        self.b2fig.add_descriptions(ax=self.ax, **self.description)
-        self.ax_pull = ax[1]
-        #move the xlabel to the pull plot
 
-        self.ax.set_xticklabels([])
-        self.fig.subplots_adjust(hspace=0.05)
-
-        self.plot_ax(self.ax, **kwargs)
-        self.b2fig.shift_offset_text_position(self.ax)
-        self.add_labels(ax=self.ax)
-        self.plot_pull_ax(self.ax_pull, **pull_args, **kwargs)
-
-        return self.fig, ax
-
-
-    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, histtype=None, **kwargs):
+    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, histtype= "hatch", **kwargs):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         if not self.b2fig:
             print("create b2figure")
@@ -1129,9 +1127,7 @@ class StackedHistogram(HistogramCanvas):
         self.color_scheme(reverse=reverse_colors, cm=cm)
         colors=self.colors
         plot_args = kwargs.get("plot_args", {})
-        ncols_legend = plot_args.get("ncols", 1)
-        if "ncols" in plot_args:
-            del plot_args["ncols"]
+        ncols_legend = plot_args.pop("ncols", 1)
 
         bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
@@ -1154,6 +1150,18 @@ class StackedHistogram(HistogramCanvas):
                     #ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
                     #    edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
                     #if uncert_label: uncert_label = False
+            elif histtype == "hatch":
+                x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
+                y1 = copy.deepcopy(np.concatenate([[0], stack, [0]]))
+                y2 = np.concatenate([[0], stack+hist.entries, [0]])
+                if not "linewidth" in plot_args and not "lw" in plot_args:
+                    plot_args["lw"] = 0.9
+                if i%2 == 0:
+                    hatch = "/////"
+                else:
+                    hatch = "\\\\\\\\\\"
+                ax.fill_between(x, y1, y2,  color=color, **plot_args, hatch=hatch,  step='pre', facecolor="white", alpha=0.5)
+                ax.step(x, y2, label=name, color=color, lw=1.2)
             else:
 
                     #print(f"stack {name}")
@@ -1163,7 +1171,7 @@ class StackedHistogram(HistogramCanvas):
                     #ax.fill_between(self.bin_centers, stack, stack+hist.entries, label=name, step="mid",
                     #                linewidth=0, linestyle="-", color=color)
                     ax.bar(x=self.bin_centers, height=hist.entries, width=bin_width, bottom=stack,
-                        color=color, edgecolor=color, lw=0.1,label=name)
+                        color=color, edgecolor=color, lw=1,label=name, fill=False, hatch="/")
 
             stack += hist.entries
             i += 1
@@ -1184,6 +1192,8 @@ class StackedHistogram(HistogramCanvas):
                 ax.set_ylim((0.5, ax.get_ylim()[1]))
         if ylim:
             ax.set_ylim(ylim)
+        else:
+            ax.set_ylim((0, ax.get_ylim()[1]))
 
         ax.legend(ncols=ncols_legend)
         self.add_labels(ax=ax)

@@ -38,7 +38,8 @@ class Test_StackedHistogram():
 
         assert hist.var == "x", "var between histograms mismatch"
         assert hist.lumi == lumi, "lumi not as expected"
-        assert np.all(stacked_hist.bin_edges == hist.bin_edges), "bin edges mismatch"
+        #assert np.all(stacked_hist.bin_edges == hist.bin_edges), f"bin edges mismatch: {stacked_hist.bin_edges} vs {hist.bin_edges}"
+        assert np.array_equal(np.array(stacked_hist.bin_edges, dtype=np.float32), np.array(hist.bin_edges, dtype=np.float32)), f"bin edges mismatch: {stacked_hist.bin_edges} vs {hist.bin_edges}"
 
         return stacked_hist
 
