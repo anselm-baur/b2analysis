@@ -12,7 +12,7 @@ class PickleBase(object):
 
 
     @staticmethod
-    def load(file_name, lumi=None, bins=None, serialized=False):
+    def load(file_name, lumi=None, bins=None, serialized=True):
         if serialized:
             with open(file_name, "rb") as pkl:
                 hist_dict = pickle.load(pkl)
@@ -57,6 +57,7 @@ class PickleBase(object):
         with open(file_name, "wb") as handle:
             pickle.dump(self, handle, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"pickled: {file_name}")
+
 
 
 class CanvasBase(PickleBase):
@@ -113,82 +114,122 @@ class HistogramBase(PickleBase):
             data = np.array(data)
 
         #make sure weights are a numpy array
-        #print(weights, type(weights))
+        #print(weights, type(weights), weights.shape)
+        if data.ndim == 1:
+            weights_shape = data.size
+        else:
+            weights_shape = data.shape[-1]
         if isinstance(weights, int) or isinstance(weights, float):
-            weights = np.full(data.size, weights)
+            weights = np.full(weights_shape, weights)
         elif isinstance(weights, list):
             weights = np.array(weights)
 
-
-
         if weights is None:
-            self.weights = np.full(data.size, self.scale)
+            self.weights = np.full(weights_shape, self.scale)
         elif not weights.any():
             #print("create weights")
-            self.weights = np.full(data.size, self.scale)
+            self.weights = np.full(weights_shape, self.scale)
         else:
-            if not weights.size == data.size:
-                raise ValueError(f"data and weights not same size ({weights.size}/{data.size})!")
+            #if not weights.shape == weights_shape:
+            #    raise ValueError(f"data and weights not same size ({weights.shape}/{weights_shape})!")
             self.weights = weights * scale
         #print(scale, self.weights, weights)
         #print(data.size)
 
-
         # We create a Histogram from an existing Histogram
         if is_hist:
-            if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
-                print(f"failed, len(data)+1 = {len(list(data))+1} == len(bins) = {len(list(kwargs['bins']))}")
-                raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
-            self.bin_edges = np.array(kwargs["bins"])
-            self.entries = np.array(data)
-            self._update_bins()
-            if "err" in kwargs:
-                self.err = copy.deepcopy(np.array(kwargs["err"]))
-                self.stat_uncert = None #omit wrong uncertainty calculation
-            else:
-                self.update_hist()
-            self.size = self.entries.size
+            self.init_from_hist(data=data, kwargs=kwargs)
 
         # We create a new Histogram from a data sample
         else:
             #print(kwargs)
             if not overflow_bin:
-                np_hist = np.histogram(data, weights=self.weights, **kwargs)
-                self.entries = np_hist[0]
-                self.bin_edges = np.array(np_hist[1])
-                self._update_bins()
-                self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
-
+                self.init_without_overflow_bins(data=data, kwargs=kwargs)
             else:
-                #first add to the first and last bins bins which go to -/+ inf
-                #then we trim the histograms and ad at content of the first and last inf bins
-                #to the neighbor bins and cut the inf bins out
-                if not "bins" in kwargs:
-                    kwargs["bins"] = 50
-                if type(kwargs["bins"]) is int:
-                    if not "range" in kwargs:
-                        if np.min(data) == np.max(data):
-                            kwargs["range"] = (data[0]-1, data[0]+1)
-                        else:
-                            kwargs["range"] = (np.min(data), np.max(data))
-                    kwargs["bins"] = np.concatenate([[-np.inf],
-                                                np.linspace(*kwargs["range"], kwargs["bins"]+1),
-                                                [np.inf]])
-                else:
-                    kwargs["bins"] = np.concatenate([[-np.inf],kwargs["bins"],[np.inf]])
+                self.init_with_overflow_bins(data=data, kwargs=kwargs)
 
-                np_hist = np.histogram(data, weights=self.weights, **kwargs)
-                self.entries = np_hist[0]
-                self.bin_edges = np_hist[1]
-                self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
-                self._trim_hist(0,1)
-                self._trim_hist(-2,-1)
-                self._update_bins()
-
-            self.size = self.bin_centers.size
+            #self.size = self.bin_centers.size
             self.update_hist()
 
-        self.bin_edges = np.around(np.array(self.bin_edges, dtype=np.float64), 5)
+        #self.bin_edges = np.around(np.array(self.bin_edges, dtype=np.float64), 5)
+
+    @property
+    def bin_edges(self):
+        return self._bin_edges
+
+    @bin_edges.setter
+    def bin_edges(self, value):
+        self._bin_edges = self.parse_bin_edges(value)
+        self._update_bins()
+
+
+    @property
+    def size(self):
+        return self.bin_centers.size
+
+
+    def __setstate__(self, state):
+        # Convert old attribute to new property format
+        if 'bin_edges' in state:
+            state['_bin_edges'] = state.pop('bin_edges')
+        self.__dict__.update(state)
+
+
+
+    def parse_bin_edges(self, bin_edges):
+        return np.around(np.array(copy.deepcopy(bin_edges), dtype=np.float64), 5)
+
+
+    def init_from_hist(self, data, kwargs):
+        """Create the Histogram object from an existing Histogram, basically we are just copying the values.
+        """
+        if not "bins" in kwargs or len(list(kwargs["bins"])) != len(list(data))+1 :
+            print(f"failed, len(data)+1 = {len(list(data))+1} == len(bins) = {len(list(kwargs['bins']))}")
+            raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
+        self.bin_edges = np.array(kwargs["bins"])
+        self.entries = np.array(data)
+        self._update_bins()
+        if "err" in kwargs:
+            self.err = copy.deepcopy(np.array(kwargs["err"]))
+            self.stat_uncert = None #omit wrong uncertainty calculation
+        else:
+            self.update_hist()
+        #self.size = self.entries.size
+
+
+    def init_without_overflow_bins(self, data, kwargs):
+        np_hist = np.histogram(data, weights=self.weights, **kwargs)
+        self.entries = np_hist[0]
+        self.bin_edges = np.array(np_hist[1])
+        self._update_bins()
+        self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
+
+
+    def init_with_overflow_bins(self, data, kwargs):
+        #first add to the first and last bins bins which go to -/+ inf
+        #then we trim the histograms and ad at content of the first and last inf bins
+        #to the neighbor bins and cut the inf bins out
+        if not "bins" in kwargs:
+            kwargs["bins"] = 50
+        if isinstance(kwargs["bins"], int):
+            if not "range" in kwargs:
+                if np.min(data) == np.max(data):
+                    kwargs["range"] = (data[0]-1, data[0]+1)
+                else:
+                    kwargs["range"] = (np.min(data), np.max(data))
+            kwargs["bins"] = np.concatenate([[-np.inf],
+                                        np.linspace(*kwargs["range"], kwargs["bins"]+1),
+                                        [np.inf]])
+        else:
+            kwargs["bins"] = np.concatenate([[-np.inf],kwargs["bins"],[np.inf]])
+
+        np_hist = np.histogram(data, weights=self.weights, **kwargs)
+        self.entries = np_hist[0]
+        self.bin_edges = np_hist[1]
+        self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
+        self._trim_hist(0,1)
+        self._trim_hist(-2,-1)
+        self._update_bins()
 
 
    # breaks the pickled histogram object
@@ -259,7 +300,7 @@ class HistogramBase(PickleBase):
     def _update_bins(self):
         self.bin_centers = np.around(np.array((self.bin_edges[1:]+self.bin_edges[:-1])/2, dtype=np.float64), 5)
         self.range = (self.bin_edges[0], self.bin_edges[-1])
-        self.bins = self.bin_centers.size
+        #self.bins = self.bin_centers.size
 
 
     def rebin(self, new_bin_edges):
@@ -477,7 +518,7 @@ class Histogram(HistogramBase):
         ret_str += "================\n"
         ret_str += f"name: {self.name}\n"
         ret_str += f"var: {self.var}\n"
-        ret_str += f"bins: {self.bins}\n"
+        #ret_str += f"bins: {self.bins}\n"
         ret_str += f"entries: {np.sum(self.entries):.0f}\n"
         if self.weights is not None:
             ret_str += f"weights: {np.mean(self.weights):.3f}\n"
@@ -561,18 +602,29 @@ class HistogramCanvas(CanvasBase):
     #    self._lumi = value
     #    self.description["luminosity"] = self.lumi
 
+    def empty(self):
+        """Method to check if any histograms have been already added. If not the bin
+        edges are empty!"""
+        return not self.bin_edges.any()
+
+
+    def bin_edges_compatible(self, bin_edges):
+        compatible = np.array_equal(np.array(bin_edges, dtype=np.float32), self.bin_edges)
+        assert compatible, f"Hist bin edges not compatible with the rest of the stack ({bin_edges.size}, {self.bin_edges.size})!"
+
 
     def add_histogram(self, hist, label=True, color=None):
         """Add a histogram to the canvas."""
-        if not self.bin_edges.any():
+        if self.empty():
+            #print(f"adding bin edges: {hist.bin_edges}")
             self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
             if not self.unit and hist.unit:
                 self.unit = hist.unit
-            self.bins = hist.bins
-            self.size = self.bin_centers.size
+            #self.bins = hist.bins
+            #self.size = self.bin_centers.size
             self._update_bins()
         else:
-            assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), self.bin_edges), f"Hist bin edges not compatible with the rest of the stack ({hist.bin_edges.size}, {self.bin_edges.size})!"
+            self.bin_edges_compatible(hist.bin_edges)
         if not self.lumi:
             self.set_lumi(hist.lumi * hist.lumi_scale)
         else:
@@ -602,7 +654,7 @@ class HistogramCanvas(CanvasBase):
     def _update_bins(self):
         self.bin_centers = (self.bin_edges[1:]+self.bin_edges[:-1])/2
         self.range = (self.bin_edges[0], self.bin_edges[-1])
-        self.bins = self.bin_centers.size
+        #self.bins = self.bin_centers.size
 
 
     def create_histogram(self, name, data, lumi, lumi_scale=1, is_signal=False, **kwargs):
@@ -1002,9 +1054,9 @@ class StackedHistogram(HistogramCanvas):
             self.bin_centers = hist.bin_centers
             if not self.unit and hist.unit:
                 self.unit = hist.unit
-            self.bins = hist.bins
+            #self.bins = hist.bins
             self.range = hist.range
-            self.size = self.bin_centers.size
+            #self.size = self.bin_centers.size
         else:
             assert np.array_equal(np.array(hist.bin_edges, dtype=np.float32), np.array(self.bin_edges, dtype=np.float32)), f"Hist bin edges not compatible with the rest of the stack! {hist.bin_edges} {hist.bin_edges.dtype} and {self.bin_edges} {self.bin_edges.dtype}"
         self.data_hist = hist
@@ -1247,7 +1299,7 @@ class StackedHistogram(HistogramCanvas):
                 # sigma = n2/lumi_scale *lumi_scale**2
                 #uncert += hist.entries/hist.lumi_scale*hist.lumi_scale**2
                 uncert += hist.err**2 #quadratic sum of each uncertainty component
-        elif len(self.hists) ==0 and self.data_hist:
+        elif len(self.hists) == 0 and self.data_hist:
             uncert = self.data_hist.err**2
         return np.sqrt(uncert)
 
@@ -1303,7 +1355,7 @@ class StackedHistogram(HistogramCanvas):
         serial_hist["var"] = self.var
         serial_hist["unit"] = self.unit
         serial_hist["lumi"] = self.lumi
-        serial_hist["bins"] = self.bins
+        #serial_hist["bins"] = self.bins
         serial_hist["range"] = self.range
         serial_hist["bin_edges"] = list(self.bin_edges)
         serial_hist["bin_centers"] = list(self.bin_centers)

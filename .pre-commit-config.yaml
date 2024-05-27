@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+    - id: pytest
+      name: pytest
+      entry: /nfs/dust/belle2/user/abaur/tau-lifetime/tau_pyenv/bin/pytest tests
+      language: system
+      types: [python]
+      pass_filenames: false
+      always_run: true
