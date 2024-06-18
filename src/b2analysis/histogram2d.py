@@ -1,4 +1,6 @@
 from b2analysis import HistogramBase, StackedHistogram, Histogram
+from b2style import B2Figure
+import matplotlib.pyplot as plt
 import numpy as np
 import copy
 
@@ -16,8 +18,8 @@ class HistogramBase2D(HistogramBase):
         elif isinstance(value, np.ndarray) and value.size==0:
             #make sure we have the right format
             value = [np.array([]), np.array([])]
-        print("parsing bin edges...")
-        print(f"value: {value}")
+        #print("parsing bin edges...")
+        #print(f"value: {value}")
         self._bin_edges = [self.parse_bin_edges(value[0]),
                            self.parse_bin_edges(value[1])]
         self._update_bins()
@@ -54,7 +56,7 @@ class HistogramBase2D(HistogramBase):
                 else:
                     _bins = kwargs["bins"]+1
 
-                print(np.linspace(*kwargs["range"][i], _bins))
+                #print(np.linspace(*kwargs["range"][i], _bins))
                 bins.append(np.concatenate([[-np.inf],
                                         np.linspace(*kwargs["range"][i], _bins),
                                         [np.inf]]))
@@ -78,7 +80,7 @@ class HistogramBase2D(HistogramBase):
         #self.bin_centers = [np.around(np.array((bin_edges[1:]+bin_edges[:-1])/2, dtype=np.float64), 5) for bin_edges in self.bin_edges]
         self.bin_centers = []
         for i, bin_edges in enumerate(self.bin_edges):
-            print(bin_edges)
+            #print(bin_edges)
             self.bin_centers.append(np.around(np.array((bin_edges[1:]+bin_edges[:-1])/2, dtype=np.float64), 5))
         if self.bin_edges[0].size == 0:
             self.range = [np.array([]), np.array([])]
@@ -174,11 +176,18 @@ class HistogramBase2D(HistogramBase):
         return np.array(w_uncert)
 
 
+    def check_compatibility(self, other):
+        for other_bin_edges, self_bin_edges in zip(other.bin_edges, self.bin_edges):
+            assert np.array_equal(np.array(other_bin_edges, dtype=np.float32), self_bin_edges.astype(np.float32)), f"Hist bin edges not compatible! ({other_bin_edges} vs. {self_bin_edges})"
+            assert self.unit == other.unit, "Hist units not compatible!"
+
+
+
 class Histogram2D(HistogramBase2D, Histogram):
     pass
 
 
-class StackedHistogram2D(HistogramBase2D, StackedHistogram):
+class StackedHistogram2D(StackedHistogram, HistogramBase2D):
     #@property
     #def bin_edges(self):
     #    return self._bin_edges
@@ -192,12 +201,13 @@ class StackedHistogram2D(HistogramBase2D, StackedHistogram):
     def __init__(self, *args, **kwargs):
         StackedHistogram.__init__(self, *args, **kwargs)
 
+
     def get_stacked_entries(self):
         """Get the sum of the stacked entries per bin."""
-        print(self.bin_edges)
+        #print(self.bin_edges)
         entries = np.array([[]])
         if len(self.hists) > 0:
-            print(self.bin_centers)
+            #print(self.bin_centers)
             entries = np.zeros((self.bin_centers[0].size, self.bin_centers[1].size))
             if not self.data_hist:
                 if len(self.hists) > 0:
@@ -217,12 +227,29 @@ class StackedHistogram2D(HistogramBase2D, StackedHistogram):
 
 
     def get_stat_uncert(self):
-        pass
+        """Calculate the stacked uncertainty of the stacked histogram using sqrt(sum(sum(lumi_scale_1**2), sum(lumi_scale_2**2), ..., sum(lumi_scale_n**2)))
+        of the n histograms."""
+        #print(self.bin_centers)
+        if len(self.bin_centers)==2:
+            uncert = np.zeros([self.bin_centers[0].size, self.bin_centers[1].size])
+        else:
+            uncert=np.array([])
+        #print(uncert)
+        if len(self.hists) > 0:
+            for name, hist in self.hists.items():
+                # sigma = n2/lumi_scale *lumi_scale**2
+                #uncert += hist.entries/hist.lumi_scale*hist.lumi_scale**2
+                uncert += hist.err**2 #quadratic sum of each uncertainty component
+        elif len(self.hists) == 0 and self.data_hist:
+            uncert = self.data_hist.err**2
+        return np.sqrt(uncert)
+
 
     def empty(self):
         """Method to check if any histograms have been already added. If not the bin
         edges are empty!"""
         return not self.bin_edges[0].any()
+
 
     def bin_edges_compatible(self, bin_edges):
         compatible = True
@@ -233,3 +260,30 @@ class StackedHistogram2D(HistogramBase2D, StackedHistogram):
                 print(_bin_edges, self.bin_edges[i])
                 break
         assert compatible, f"Hist bin edges not compatible with the rest of the stack [({bin_edges[0].size}, {self.bin_edges[0].size}), ({bin_edges[1].size}, {self.bin_edges[1].size})]!"
+
+
+    def plot(self, xlabel=None, ylabel=None, **kwargs):
+        if not xlabel:
+            xlabel=""
+        if not ylabel:
+            ylabel=""
+
+        b2fig = B2Figure()
+        fig, ax = b2fig.create()
+        # Create a meshgrid for the plot
+        _xedges, _yedges = np.meshgrid(self.bin_edges[0], self.bin_edges[1])
+
+        # Create a masked array where zero values are masked
+        masked_data = np.ma.masked_where(self.entries == 0, self.entries)
+
+        # Create a custom colormap based on 'viridis'
+        cmap = plt.cm.viridis
+        cmap.set_bad(color='white')
+
+        # Plot the 2D histogram
+        cm = ax.pcolormesh(_xedges, _yedges, masked_data.T, cmap='viridis', **kwargs)
+        fig.colorbar(cm, label='Events', )
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+
+        return fig, ax
