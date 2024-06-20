@@ -481,7 +481,7 @@ class Histogram(HistogramBase):
         self.re_scale(factor=factor, update_lumi=update_lumi)
 
 
-    def plot(self, fig=None, ax=None, histtype="errorbar", dpi=100, uncert_label=True, log=False, ylim=False):
+    def plot(self, fig=None, ax=None, histtype="hatch", dpi=100, uncert_label=True, log=False, ylim=False, color="blue"):
         b2fig = B2Figure()
         if not fig and not ax:
             fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
@@ -497,8 +497,21 @@ class Histogram(HistogramBase):
             ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
                     edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
             if uncert_label: uncert_label = False
+        elif histtype == "hatch":
+            x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
+            y1 =np.concatenate([[0], self.entries, [0]])
+            hatch = "\\\\\\\\\\\\"
+            ax.fill_between(x, y1, lw=0.9, hatch=hatch, color=color, step='pre', facecolor="white", alpha=0.5)
+            ax.step(x, y1, label=self.name, color=color, lw=1.2)
+            uncert = self.err
+            bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
+            ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
+                edgecolor="black",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
+            if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
         ax.set_xlim((*self.range))
+        if not log:
+            ax.set_ylim([0, ax.get_ylim()[1]])
         if ylim:
             span = self.entries.max() - self.entries.min()
             ax.set_ylim([(self.entries-self.err).min()-span*0.3, (self.entries+self.err).max()+span*0.3])
