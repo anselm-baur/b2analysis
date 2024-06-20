@@ -5,7 +5,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "b2analysis-anselm-baur" # Replace with your own username
-version = "0.1.39"
+version = "0.2.1"
+
 authors = [
     { name="Anselm Baur", email="anselm.baur@desy.de"}
 ]

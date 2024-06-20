@@ -444,6 +444,8 @@ class HistogramBase(PickleBase):
             name = f"{self.name}/{other.name}"
             data = np.array(self.entries)/np.array(other.entries)
             err = np.sqrt((self.err/other.entries)**2+(other.err*self.entries/other.entries**2)**2-2*self.entries/other.entries**3*self.err*other.err*corr)
+            #print(self.entries)
+            #print(other.entries)
             res_hist = Histogram(name, data, err=err, lumi=self.lumi, is_hist=True, bins=self.bin_edges )
         return res_hist
 
@@ -1273,6 +1275,7 @@ class StackedHistogram(HistogramCanvas):
 
         if ratio:
             with np.errstate(divide='ignore',invalid='ignore'):
+                #print(self.get_stacked_entries())
                 scale_factor = 1
                 norm_label = ""
                 if normalized:
@@ -1294,6 +1297,8 @@ class StackedHistogram(HistogramCanvas):
                 ylabel = r"$\mathbf{\frac{mc-data}{data}}$"
         with np.errstate(divide='ignore',invalid='ignore'):
             plot_err = np.sqrt((self.get_stat_uncert()/data_hist.entries)**2+(data_hist.err*self.get_stacked_entries()/data_hist.entries**2)**2-2*self.get_stacked_entries()/data_hist.entries**3*self.get_stat_uncert()*data_hist.err*corr)
+        #print(plot)
+        #print(plot_err)
         ax.errorbar(bin_centers, plot, yerr=plot_err, **self.errorbar_args)
 
         ax.set_xlim(bin_edges[0], bin_edges[-1])
@@ -1325,7 +1330,7 @@ class StackedHistogram(HistogramCanvas):
                 for name, hist in self.hists.items():
                     entries += hist.entries
         else:
-            if len(self.hists) > 1:
+            if len(self.hists) >= 1:
                 for name, hist in self.hists.items():
                     if not name == "data":
                         entries += hist.entries
