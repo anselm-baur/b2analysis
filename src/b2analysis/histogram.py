@@ -6,6 +6,13 @@ import copy
 import pickle
 
 
+def parse_bin_edges(bin_edges):
+    """parse the bin edges to a numpy array which has a certain precise round to avoide incompatibility
+    due to bit precision limits.
+    """
+    return np.around(np.array(copy.deepcopy(bin_edges), dtype=np.float64), 5)
+
+
 class PickleBase(object):
     def copy(self):
         return copy.deepcopy(self)
@@ -173,11 +180,6 @@ class HistogramBase(PickleBase):
         if 'bin_edges' in state:
             state['_bin_edges'] = state.pop('bin_edges')
         self.__dict__.update(state)
-
-
-
-    def parse_bin_edges(self, bin_edges):
-        return np.around(np.array(copy.deepcopy(bin_edges), dtype=np.float64), 5)
 
 
     def init_from_hist(self, data, kwargs):
@@ -455,6 +457,10 @@ class HistogramBase(PickleBase):
         assert self.unit == other.unit, "Hist units not compatible!"
 
 
+    def parse_bin_edges(self, bin_edges):
+        return parse_bin_edges(bin_edges=bin_edges)
+
+
 class Histogram(HistogramBase):
     """Analysis Histogram Class."""
 
@@ -624,15 +630,23 @@ class HistogramCanvas(CanvasBase):
 
 
     def bin_edges_compatible(self, bin_edges):
-        compatible = np.array_equal(np.array(bin_edges, dtype=np.float32), self.bin_edges)
+        #compatible = np.array_equal(np.array(bin_edges, dtype=np.float32), self.bin_edges)
+        compatible = np.array_equal(parse_bin_edges(bin_edges), parse_bin_edges(self.bin_edges))
         assert compatible, f"Hist bin edges not compatible with the rest of the stack ({bin_edges.size}, {self.bin_edges.size})!"
+
+
+    def _parse_bin_edges_hack(self, bin_edges):
+        """Hack to deal with parsing the bin edges in the 2D Histograms
+        """
+        return parse_bin_edges(bin_edges=bin_edges)
 
 
     def add_histogram(self, hist, label=True, color=None):
         """Add a histogram to the canvas."""
         if self.empty():
             #print(f"adding bin edges: {hist.bin_edges}")
-            self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
+            #self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
+            self.bin_edges = self._parse_bin_edges_hack(hist.bin_edges)
             if not self.unit and hist.unit:
                 self.unit = hist.unit
             #self.bins = hist.bins

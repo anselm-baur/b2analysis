@@ -38,7 +38,20 @@ class HistogramBase2D(HistogramBase):
         #to the neighbor bins and cut the inf bins out
         if not "bins" in kwargs:
             kwargs["bins"] = 50
-        if isinstance(kwargs["bins"], int) or (np.array(kwargs["bins"]).ndim==1 and np.array(kwargs["bins"]).size==2):
+        if isinstance(kwargs["bins"], int):
+            _bins = np.array(kwargs["bins"], dtype=np.int)
+        elif len(list(kwargs["bins"]))==2:
+            if isinstance(kwargs["bins"][0], int) or isinstance(kwargs["bins"][0], float) \
+                and isinstance(kwargs["bins"][1], int) or isinstance(kwargs["bins"][1], float):
+                # provided bins are number of bins in each dimension e.g. [10, 5]
+                _bins = np.array(kwargs["bins"], dtype=np.float32)
+            else:
+                # provided bins are two lists with (un)equal elements e.g. [[0,1,2,3],[0,3,4]]
+                _bins = np.array(kwargs["bins"], dtype=object)
+        else:
+            raise RuntimeError("got bad bin format, don't know what to do. use e.g. 3, [3, 4], [[1,2,3], [2, 5, 6, 7]]")
+
+        if isinstance(kwargs["bins"], int) or (_bins.ndim==1 and _bins.size==2 and not _bins.dtype==object):
             if not "range" in kwargs:
                 bin_ranges = []
                 for i, _data in enumerate(data):
@@ -48,6 +61,7 @@ class HistogramBase2D(HistogramBase):
                         bin_ranges.append((np.min(_data), np.max(_data)))
                 kwargs["range"] = bin_ranges
             bins = []
+            print(kwargs["bins"])
             for i in range(2):
                 # creae the 2D bin edges
                 if (np.array(kwargs["bins"]).ndim==1 and np.array(kwargs["bins"]).size==2):
@@ -62,6 +76,7 @@ class HistogramBase2D(HistogramBase):
                                         [np.inf]]))
 
         else:
+            #print(kwargs["bins"])
             bins = []
             for i in range(2):
                 bins.append(np.concatenate([[-np.inf],kwargs["bins"][i],[np.inf]]))
@@ -260,6 +275,12 @@ class StackedHistogram2D(StackedHistogram, HistogramBase2D):
                 print(_bin_edges, self.bin_edges[i])
                 break
         assert compatible, f"Hist bin edges not compatible with the rest of the stack [({bin_edges[0].size}, {self.bin_edges[0].size}), ({bin_edges[1].size}, {self.bin_edges[1].size})]!"
+
+
+    def _parse_bin_edges_hack(self, bin_edges):
+        """Hack to deal with parsing the bin edges in the 2D Histograms
+        """
+        return bin_edges
 
 
     def plot(self, xlabel=None, ylabel=None, **kwargs):
