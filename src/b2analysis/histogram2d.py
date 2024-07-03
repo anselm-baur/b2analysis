@@ -61,7 +61,7 @@ class HistogramBase2D(HistogramBase):
                         bin_ranges.append((np.min(_data), np.max(_data)))
                 kwargs["range"] = bin_ranges
             bins = []
-            print(kwargs["bins"])
+            #print(kwargs["bins"])
             for i in range(2):
                 # creae the 2D bin edges
                 if (np.array(kwargs["bins"]).ndim==1 and np.array(kwargs["bins"]).size==2):
