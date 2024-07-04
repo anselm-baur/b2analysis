@@ -39,7 +39,7 @@ class HistogramBase2D(HistogramBase):
         if not "bins" in kwargs:
             kwargs["bins"] = 50
         if isinstance(kwargs["bins"], int):
-            _bins = np.array(kwargs["bins"], dtype=np.int)
+            _bins = np.array(kwargs["bins"], dtype=int)
         elif len(list(kwargs["bins"]))==2:
             if isinstance(kwargs["bins"][0], int) or isinstance(kwargs["bins"][0], float) \
                 and isinstance(kwargs["bins"][1], int) or isinstance(kwargs["bins"][1], float):

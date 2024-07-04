@@ -5,7 +5,6 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "b2analysis-anselm-baur" # Replace with your own username
-version = "0.2.2"
 
 authors = [
     { name="Anselm Baur", email="anselm.baur@desy.de"}
@@ -18,14 +17,18 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+    "numpy",
+]
+dynamic = ["version"]
 
 
 [project.urls]
-"Homepage" = "https://stash.desy.de/users/abaur/repos/b2analysis/browse"
+"Homepage" = "https://github.com/anselm-baur/b2analysis.git"
 
 
 [tool.setuptools.dynamic]
-version =  {attr = "b2analysis-anselm-baur.VERSION"}
+version =  {attr = "b2analysis.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
