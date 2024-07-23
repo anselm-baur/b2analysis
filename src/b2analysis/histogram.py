@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 from b2style.b2figure import B2Figure
@@ -41,6 +42,8 @@ class PickleBase(object):
     def save(self, file_name):
         if not file_name.endswith(".pickle") and not file_name.endswith(".pkl"):
             file_name += ".pkl"
+        path = Path(file_name).parent
+        path.mkdir(parents=True, exist_ok=True)
         with open(file_name, "wb") as pkl:
             pickle.dump(self.serialize(), pkl, protocol=pickle.HIGHEST_PROTOCOL)
         print(f"pickled serialized: {file_name}")
@@ -101,12 +104,12 @@ class CanvasBase(PickleBase):
 
 
 
-class HistogramBase(PickleBase):
-    def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, weights=np.array([]), **kwargs):
+class HistogramBase(CanvasBase):
+    def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, weights=np.array([]), output_dir="",  **kwargs):
         """Creates a HistogramBase object from either data points wich gets histogramed (is_hist=False) or form already binned data
         (is_hist=True).
         """
-        self.name = name
+        super().__init__(name=name, output_dir=output_dir)
         self.var = var
         self.scale = scale # basically the weight of each event
         self.unit = unit
@@ -367,7 +370,7 @@ class HistogramBase(PickleBase):
             fig, ax = plt.subplots(ncols=1, nrows=1, dpi=dpi)
 
         if histtype == "errorbar":
-            ax.errorbar(self.bin_centers, self.entries, yerr=self.err, label=self.label,)
+            ax.errorbar(self.bin_centers, self.entries, yerr=self.err, label=self.label, **self.errorbar_args)
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.entries, [0]])
@@ -464,12 +467,18 @@ class HistogramBase(PickleBase):
 class Histogram(HistogramBase):
     """Analysis Histogram Class."""
 
-    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, color=None,  **kwargs):
+    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, color=None, is_simulation=True, is_preliminary=False,
+                 additional_info=None,  **kwargs):
         super().__init__(name=name, data=data, scale=lumi_scale, is_hist=is_hist, **kwargs)
         self.is_signal = is_signal
         self.lumi = lumi
         self.lumi_scale = lumi_scale # basically the weight of each event
         self.color = color
+
+        self.description = {"luminosity": self.lumi,
+                            "simulation": is_simulation,
+                            "additional_info": additional_info,
+                            "preliminary": not is_simulation and is_preliminary}
 
 
     def re_scale(self, factor, update_lumi=False):
@@ -487,13 +496,16 @@ class Histogram(HistogramBase):
         self.re_scale(factor=factor, update_lumi=update_lumi)
 
 
-    def plot(self, fig=None, ax=None, histtype="hatch", dpi=100, uncert_label=True, log=False, ylim=False, color="blue"):
-        b2fig = B2Figure()
+    def plot(self, fig=None, ax=None, figsize=(6,6), histtype="hatch", dpi=100, uncert_label=True, log=False, ylim=False, color="blue", additional_info=None):
+
+        if additional_info:
+                self.description["additional_info"] = additional_info
+        b2fig = B2Figure(auto_description=True, description=self.description)
         if not fig and not ax:
-            fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi)
+            fig, ax = b2fig.create(ncols=1, nrows=1, dpi=dpi, figsize=figsize)
 
         if histtype == "errorbar":
-            ax.errorbar(self.bin_centers, self.entries, yerr=self.err, label=self.label, **b2fig.errorbar_args)
+            ax.errorbar(self.bin_centers, self.entries, yerr=self.err, label=self.label, **self.errorbar_args)
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.entries, [0]])
@@ -522,6 +534,8 @@ class Histogram(HistogramBase):
             span = self.entries.max() - self.entries.min()
             ax.set_ylim([(self.entries-self.err).min()-span*0.3, (self.entries+self.err).max()+span*0.3])
         ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
+
+        b2fig.shift_offset_text_position_old(ax)
         ax.set_ylabel("events")
         if log:
             ax.set_yscale("log")
@@ -585,7 +599,7 @@ class HistogramCanvas(CanvasBase):
     for comparison."""
 
     def __init__(self, lumi=None, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
-        super().__init__(**kwargs)
+        CanvasBase.__init__(self,**kwargs)
 
         self.lumi = lumi
         self.var = var
@@ -895,8 +909,7 @@ class HistogramCanvas(CanvasBase):
 
 
     def pull_plot(self, dpi=90, figsize=(6,6), pull_args=None, additional_info="", height_ratios=None, pull_ylim=None, **kwargs):
-        """_summary_
-
+        """
         :param dpi: _description_, defaults to 90
         :type dpi: int, optional
         :param figsize: _description_, defaults to (6,6)
@@ -918,7 +931,7 @@ class HistogramCanvas(CanvasBase):
                      "pull_bar": pull_bar,
                      "fmt": fmt,
                      "xlabel": xlabel,
-                     "ylabel":  r"$\mathbf{\frac{hist}{nom_hist}}$"
+                     "ylabel":  r"$\\mathbf{\\frac{hist}{nom_hist}}$"
                      "corr": corr}
         """
         pull_args = copy.deepcopy(pull_args)
@@ -1185,17 +1198,17 @@ class StackedHistogram(HistogramCanvas):
         self.__update()
 
 
-    def plot(self, dpi=90,  xlabel="", ylabel="events", **kwargs):
-        """Plot the stacked histogram"""
-
-        self.b2fig = B2Figure(auto_description=True, description=self.description)
-        self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi)
-
-        self.plot_ax(self.ax, **kwargs)
-        self.b2fig.shift_offset_text_position(self.ax)
-        self.add_labels(ax=self.ax, xlabel=xlabel, ylabel=ylabel)
-
-        return self.fig, self.ax
+    #def plot(self, dpi=90,  xlabel="", ylabel="events", **kwargs):
+    #    """Plot the stacked histogram"""
+    #
+    #    self.b2fig = B2Figure(auto_description=True, description=self.description)
+    #    self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi)
+    #
+    #    self.plot_ax(self.ax, **kwargs)
+    #    self.b2fig.shift_offset_text_position(self.ax)
+    #    self.add_labels(ax=self.ax, xlabel=xlabel, ylabel=ylabel)
+    #
+    #    return self.fig, self.ax
 
 
 

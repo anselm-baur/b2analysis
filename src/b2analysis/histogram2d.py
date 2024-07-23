@@ -197,7 +197,56 @@ class HistogramBase2D(HistogramBase):
             assert self.unit == other.unit, "Hist units not compatible!"
 
 
+    def plot(self, fig=None, ax=None, xlabel=None, ylabel=None, figsize=None, additional_info="", cut_0=True, contour=None, level=None, contour_label=None, **kwargs):
+        if not xlabel:
+            xlabel=""
+        if not ylabel:
+            ylabel=""
 
+        if additional_info:
+            self.description["additional_info"] = additional_info
+        self.b2fig = B2Figure(auto_description=True, description=self.description)
+        if not fig and not ax:
+            self.fig, self.ax = self.b2fig.create(figsize=figsize)
+        else:
+            self.fig = fig
+            self.ax = ax
+        # Create a meshgrid for the plot
+        _xedges, _yedges = np.meshgrid(self.bin_edges[0], self.bin_edges[1])
+
+        # Create a masked array where zero values are masked
+        if cut_0:
+            masked_data = np.ma.masked_where(self.entries == 0, self.entries)
+        else:
+            print("cut0 false")
+            masked_data = self.entries
+
+        # Create a custom colormap based on 'viridis'
+        cmap = plt.cm.viridis
+        cmap.set_bad(color='white')
+
+        # Plot the 2D histogram
+        cm = self.ax.pcolormesh(_xedges, _yedges, masked_data.T, cmap='viridis', **kwargs)
+        
+        if contour is not None:
+            self.check_compatibility(contour)
+            if level is None:
+                level = [np.array(contour.entries).max()/10]
+            c= self.ax.contour(contour.entries.T, extent=[contour.bin_edges[0][0], contour.bin_edges[0][-1], 
+                                                    contour.bin_edges[1][0], contour.bin_edges[1][-1]],
+                        levels=level, colors=["red"])
+            le, _ = c.legend_elements()
+            self.ax.legend([le[0]], [f'{contour_label}'], fontsize=9, frameon=True, framealpha=0.7)
+            
+        
+        self.ax.set_xlabel(xlabel)
+        self.ax.set_ylabel(ylabel)
+
+        if not fig and not ax:
+            self.fig.colorbar(cm, label='Events', )
+            return self.fig, self.ax
+        return cm
+    
 class Histogram2D(HistogramBase2D, Histogram):
     pass
 
@@ -281,30 +330,6 @@ class StackedHistogram2D(StackedHistogram, HistogramBase2D):
         """Hack to deal with parsing the bin edges in the 2D Histograms
         """
         return bin_edges
-
-
-    def plot(self, xlabel=None, ylabel=None, **kwargs):
-        if not xlabel:
-            xlabel=""
-        if not ylabel:
-            ylabel=""
-
-        b2fig = B2Figure()
-        fig, ax = b2fig.create()
-        # Create a meshgrid for the plot
-        _xedges, _yedges = np.meshgrid(self.bin_edges[0], self.bin_edges[1])
-
-        # Create a masked array where zero values are masked
-        masked_data = np.ma.masked_where(self.entries == 0, self.entries)
-
-        # Create a custom colormap based on 'viridis'
-        cmap = plt.cm.viridis
-        cmap.set_bad(color='white')
-
-        # Plot the 2D histogram
-        cm = ax.pcolormesh(_xedges, _yedges, masked_data.T, cmap='viridis', **kwargs)
-        fig.colorbar(cm, label='Events', )
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
-
-        return fig, ax
+    
+    def plot(self, *args, **kwargs):
+        return HistogramBase2D.plot(self, *args, **kwargs)

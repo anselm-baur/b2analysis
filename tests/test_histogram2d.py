@@ -47,18 +47,22 @@ class Test_StackedHistogram2D:
     def test_add(self):
         data = [np.random.rand(100), np.random.rand(100)]
         hs1 = StackedHistogram2D()
-        h = Histogram2D(name="test2d_1", data=data, bins=[6, 6], range=[(0.2, 0.8), (0.3, 0.7)], overflow_bin=True, lumi=1)
+        h1 = Histogram2D(name="test2d_1", data=data, bins=[6, 6], range=[(0.2, 0.8), (0.3, 0.7)], overflow_bin=True, lumi=1, is_signal=True)
         #print(h.err)
-        hs1.add_histogram(h)
+        hs1.add_histogram(h1)
         #print(h.entries)
         #print(hs1.err)
         hs2 = StackedHistogram2D()
-        h = Histogram2D(name="test2d_2", data=data, bins=[6, 6], range=[(0.2, 0.8), (0.3, 0.7)], overflow_bin=True, lumi=1)
+        h2 = Histogram2D(name="test2d_2", data=data, bins=[6, 6], range=[(0.2, 0.8), (0.3, 0.7)], overflow_bin=True, lumi=1)
         #print(h.err)
-        hs2.add_histogram(h)
+        hs2.add_histogram(h2)
         #print(hs2.err)
         hs1 = hs1 + hs2
         assert np.sum(hs1.entries.flatten()) == 200, "Total number of entries is not 200"
-
-
+        h_sig = hs1.get_sig_hist()
+        h_bkg = hs1.get_bkg_hist()
+        assert (h1.entries - h_sig.entries).sum() == 0, "Signal hist entries not equal to initial signal hist"
+        assert (h2.entries - h_bkg.entries).sum() == 0, "bkg hist entries not equal to initial bkg hist"
+        
+        
 
