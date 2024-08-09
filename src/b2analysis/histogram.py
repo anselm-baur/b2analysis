@@ -72,18 +72,26 @@ class PickleBase(object):
 
 class CanvasBase(PickleBase):
 
-    def __init__(self, name="hist_canvas", output_dir = "") -> None:
+    def __init__(self, name="hist_canvas", output_dir = "", plot_state=None) -> None:
         self.output_dir = output_dir
-        self.name=name
+        self.name = name
         self.fig = None
         self.ax = None
         self.b2fig = None
+        self.description = {}
 
         self.errorbar_args = {"fmt":'o',
                               "color": "black",
                               "markersize": 3.3, #2.2,
                               "elinewidth": 1.5, #0.5
                               }
+
+        self.setp_args = {"lw": 1.5}
+        self.hatch_args = {}
+
+        if plot_state is not None:
+            print("got plot state")
+            self.plot_state = plot_state
 
     def savefig(self, filename=""):
         if not os.path.exists(self.output_dir):
@@ -102,14 +110,23 @@ class CanvasBase(PickleBase):
         self_copy.b2fig = None
         self_copy.pickle_dump(file_name)
 
+    @property
+    def plot_state(self):
+        return self._plot_state
+
+    @plot_state.setter
+    def plot_state(self, value):
+        self._plot_state = value
+        self.description["plot_state"] = value
+
 
 
 class HistogramBase(CanvasBase):
-    def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, weights=np.array([]), output_dir="",  **kwargs):
+    def __init__(self, name, data, scale=1, var="", unit="", overflow_bin=False, label="", is_hist=False, weights=np.array([]), output_dir="", plot_state=None, **kwargs):
         """Creates a HistogramBase object from either data points wich gets histogramed (is_hist=False) or form already binned data
         (is_hist=True).
         """
-        super().__init__(name=name, output_dir=output_dir)
+        super().__init__(name=name, output_dir=output_dir, plot_state=plot_state)
         self.var = var
         self.scale = scale # basically the weight of each event
         self.unit = unit
@@ -468,17 +485,17 @@ class Histogram(HistogramBase):
     """Analysis Histogram Class."""
 
     def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, color=None, is_simulation=True, is_preliminary=False,
-                 additional_info=None,  **kwargs):
+                 additional_info=None, **kwargs):
         super().__init__(name=name, data=data, scale=lumi_scale, is_hist=is_hist, **kwargs)
         self.is_signal = is_signal
         self.lumi = lumi
         self.lumi_scale = lumi_scale # basically the weight of each event
         self.color = color
 
-        self.description = {"luminosity": self.lumi,
+        self.description.update({"luminosity": self.lumi,
                             "simulation": is_simulation,
                             "additional_info": additional_info,
-                            "preliminary": not is_simulation and is_preliminary}
+                            "preliminary": not is_simulation and is_preliminary})
 
 
     def re_scale(self, factor, update_lumi=False):
@@ -496,7 +513,8 @@ class Histogram(HistogramBase):
         self.re_scale(factor=factor, update_lumi=update_lumi)
 
 
-    def plot(self, fig=None, ax=None, figsize=(6,6), histtype="hatch", dpi=100, uncert_label=True, log=False, ylim=False, color="blue", additional_info=None):
+    def plot(self, fig=None, ax=None, figsize=(6,6), histtype="hatch", dpi=100, uncert_label=True, log=False, ylim=False, color="blue",
+             additional_info=None, **kwargs):
 
         if additional_info:
                 self.description["additional_info"] = additional_info
@@ -509,7 +527,7 @@ class Histogram(HistogramBase):
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.entries, [0]])
-            ax.step(x, y, label=self.label, lw=0.9)
+            ax.step(x, y, label=self.label, **self.setp_args, **kwargs)
             uncert = self.err
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
             ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
@@ -607,12 +625,12 @@ class HistogramCanvas(CanvasBase):
         self.unit = unit
         self.bin_edges = np.array([])
         self.bin_centers = np.array([])
-        self.description = {"luminosity": self.lumi,
+        self.description.update({"luminosity": self.lumi,
                             "simulation": is_simulation,
                             "additional_info": additional_info,
-                            "preliminary": not is_simulation and is_preliminary}
+                            "preliminary": not is_simulation and is_preliminary})
 
-        self.b2fig = None
+        self.b2fig = B2Figure(color_theme="phd")
         self.fig = None
         self.ax = None
 
@@ -655,8 +673,12 @@ class HistogramCanvas(CanvasBase):
         return parse_bin_edges(bin_edges=bin_edges)
 
 
-    def add_histogram(self, hist, label=True, color=None):
+    def add_histogram(self, hist, label=True, color=None, bins=None):
         """Add a histogram to the canvas."""
+
+        if bins is not None:
+            hist.rebin(bins)
+
         if self.empty():
             #print(f"adding bin edges: {hist.bin_edges}")
             #self.bin_edges = np.array(hist.bin_edges, dtype=np.float32)
@@ -673,14 +695,21 @@ class HistogramCanvas(CanvasBase):
         else:
             if not np.round(hist.lumi * hist.lumi_scale, 2) == np.round(self.lumi, 2):
                 raise ValueError(f"Histogram luminosity {hist.lumi} and histogram luminosity scale {hist.lumi_scale} ({np.round(hist.lumi * hist.lumi_scale, 2)}) not compatible with desired luminosity {np.round(self.lumi, 2)}")
-        self.hists[hist.name] = hist
-        self.labels[hist.name] = label
         if color is not None:
+            #print(self.b2fig.colors.color)
+            #print(self.b2fig.colors.cm)
+            if color in self.b2fig.colors.color.keys():
+                color = self.b2fig.colors[color]
             self.colors[hist.name] = color
+            hist.color = color
         elif hist.color:
             self.colors[hist.name] = hist.color
         if hist.is_signal:
             self.signals += 1
+
+        self.hists[hist.name] = hist
+        self.labels[hist.name] = label
+
         self.__update()
 
         #pre-fill pull args for pull plot
@@ -733,7 +762,7 @@ class HistogramCanvas(CanvasBase):
         self.description["luminosity"] = self.lumi
 
 
-    def plot(self, dpi=90, figsize=(6,6), pull_args={}, additional_info="", **kwargs):
+    def plot(self, dpi=90, figsize=(6,5), pull_args={}, additional_info="", ylim=None, **kwargs):
         """Plot the histogram canvas."""
 
         # make sure we have colors for our histograms
@@ -760,8 +789,9 @@ class HistogramCanvas(CanvasBase):
                 self.description["additional_info"] = additional_info
             self.b2fig = B2Figure(auto_description=True, description=self.description)
             self.fig, self.ax = self.b2fig.create(ncols=1, nrows=1, dpi=dpi, figsize=figsize)
+        #self.fig.subplots_adjust(right=1)
 
-        self.plot_ax(self.ax, colors=self.colors, **kwargs)
+        self.plot_ax(self.ax, colors=self.colors, ylim=ylim, **kwargs)
         self.b2fig.shift_offset_text_position(self.ax)
         if not pull_args:
             xlabel = kwargs.get("xlabel", "")
@@ -771,7 +801,7 @@ class HistogramCanvas(CanvasBase):
         return self.fig, self.ax
 
 
-    def plot_ax(self, ax, xlabel="", histtype="hatch", log=False, x_log=False, colors=None, reverse_colors=False, errorbar_args=None, **kwargs):
+    def plot_ax(self, ax, xlabel="", histtype="hatch", log=False, x_log=False, colors=None, reverse_colors=False, errorbar_args=None, ylim=None, **kwargs):
         if not colors:
             colors = []
         if len(colors) <  len(self.hists):
@@ -785,6 +815,7 @@ class HistogramCanvas(CanvasBase):
         uncert_label = True
         plot_args = kwargs.get("plot_args", {})
         ncols_legend = plot_args.get("ncols", 1)
+        loc_legend = plot_args.get("loc", None)
         if "ncols" in plot_args:
             del plot_args["ncols"]
 
@@ -803,7 +834,7 @@ class HistogramCanvas(CanvasBase):
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
                 y = np.concatenate([[0], hist.entries, [0]])
                 if not "linewidth" in plot_args and not "lw" in plot_args:
-                    plot_args["lw"] = 0.9
+                    plot_args["lw"] = self.setp_args["lw"]
                 ax.step(x, y, label=label, color=color, **plot_args)
                 uncert = hist.err
                 bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
@@ -835,11 +866,14 @@ class HistogramCanvas(CanvasBase):
             ax.set_xscale("linear")
         if log:
             ax.set_yscale("log")
-            ax.set_ylim((0.5, ax.get_ylim()[1]))
+            if ylim is not None:
+                ax.set_ylim(ylim)
+            else:
+                ax.set_ylim((0.5, ax.get_ylim()[1]))
         ax.set_ylabel("events")
         self.b2fig.shift_offset_text_position(ax)
         #ax.legend(loc='upper left', prop={'size': 7})
-        ax.legend(ncols=ncols_legend)
+        ax.legend(loc=loc_legend, fontsize=9, frameon=False, framealpha=0.7, ncols=ncols_legend)
         self.b2fig.shift_offset_text_position_old(ax)
         if self.description["additional_info"]:
             head_room_fac = 1.1
@@ -880,12 +914,15 @@ class HistogramCanvas(CanvasBase):
         return signal_names
 
 
-    def color_scheme(self, reverse=False, exclude_signals=True,  cm=plt.cm.gist_earth):
+    def color_scheme(self, reverse=False, exclude_signals=True,  cm=None):
         #cm = plt.cm.seismic
-        cm_low = 0.1
-        cm_high = 0.8
+        #plt.cm.gist_earth
+        if cm is None:
+            cm = self.b2fig.colors.cm["default"]
+        cm_low = 0
+        cm_high = 1
 
-        self.signal_color = plt.cm.seismic(0.9)
+        self.signal_color = self.b2fig.colors.color["dark_red"] #plt.cm.seismic(0.9)
 
         if exclude_signals:
             nhists = len(self.hists)-self.signals
@@ -908,7 +945,7 @@ class HistogramCanvas(CanvasBase):
 
 
 
-    def pull_plot(self, dpi=90, figsize=(6,6), pull_args=None, additional_info="", height_ratios=None, pull_ylim=None, **kwargs):
+    def pull_plot(self, dpi=90, figsize=(6,5), pull_args=None, additional_info="", height_ratios=None, ylim=None, pull_ylim=None, **kwargs):
         """
         :param dpi: _description_, defaults to 90
         :type dpi: int, optional
@@ -950,6 +987,7 @@ class HistogramCanvas(CanvasBase):
         self.ax = ax[0]
         if additional_info:
                 self.description["additional_info"] = additional_info
+        print(self.description)
         self.b2fig.add_descriptions(ax=self.ax, **self.description)
         self.ax_pull = ax[1]
         #move the xlabel to the pull plot
@@ -957,7 +995,7 @@ class HistogramCanvas(CanvasBase):
         self.ax.set_xticklabels([])
         self.fig.subplots_adjust(hspace=0.05)
 
-        self.plot_ax(self.ax, **kwargs)
+        self.plot_ax(self.ax, ylim=ylim, **kwargs)
         self.b2fig.shift_offset_text_position(self.ax)
         self.add_labels(ax=self.ax)
         if "x_log" in kwargs:
@@ -977,18 +1015,26 @@ class HistogramCanvas(CanvasBase):
         bin_centers = nom_hist.bin_centers
         bin_edges = nom_hist.bin_edges
         bins = nom_hist.size
+        normalized = kwargs.get("normalized", False)
 
         def iterate_plot(hist, hist_color):
             nonlocal ylabel # idk why we need this here but without it will not find ylabel variable
             nonlocal pull_bar
             if ratio:
                 with np.errstate(divide='ignore',invalid='ignore'):
-                    plot = hist.entries/nom_hist.entries
+                    _hist = copy.deepcopy(hist)
+                    if normalized:
+                        scale_factor = nom_hist.entries.sum()/hist.entries.sum()
+                        _hist.re_scale(factor=scale_factor, update_lumi=False)
+
+                    plot = _hist.entries/nom_hist.entries
                 if pull_bar:
                     self.plot_pull_bars(ax, bin_edges, plot-1, 1)
                 ax.plot((bin_edges[0], bin_edges[-1]),[1,1], color='black', ls="-")
                 if not ylabel:
                     ylabel = r"$\mathbf{\frac{"+hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}{"+nom_hist.name.replace("_",r"\_").replace(" ",r"\;")+r"}}$"
+                if normalized:
+                    ylabel = ylabel + " Norm."
             else:
                 with np.errstate(divide='ignore',invalid='ignore'):
                     plot = (hist.entries-nom_hist.entries)/nom_hist.entries
@@ -1000,7 +1046,7 @@ class HistogramCanvas(CanvasBase):
                     nom_hist_label = nom_hist.name.replace("_",r"\_").replace(" ",r"\;")
                     ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
             with np.errstate(divide='ignore',invalid='ignore'):
-                plot_err = np.sqrt((hist.err/nom_hist.entries)**2+(nom_hist.err*hist.entries/nom_hist.entries**2)**2-2*hist.entries/nom_hist.entries**3*hist.err*nom_hist.err*corr)
+                plot_err = np.sqrt((_hist.err/nom_hist.entries)**2+(nom_hist.err*_hist.entries/nom_hist.entries**2)**2-2*_hist.entries/nom_hist.entries**3*_hist.err*nom_hist.err*corr)
             ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
 
         if type(hist_name) == list:
@@ -1212,8 +1258,9 @@ class StackedHistogram(HistogramCanvas):
 
 
 
-    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=plt.cm.gist_earth, histtype= "hatch", **kwargs):
+    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=None, histtype= "hatch", **kwargs):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
+        #plt.cm.gist_earth
         if not self.b2fig:
             print("create b2figure")
             self.b2fig = B2Figure()
@@ -1222,6 +1269,7 @@ class StackedHistogram(HistogramCanvas):
         colors=self.colors
         plot_args = kwargs.get("plot_args", {})
         ncols_legend = plot_args.pop("ncols", 1)
+        loc_legend = plot_args.pop("loc", None)
 
         bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
@@ -1289,7 +1337,7 @@ class StackedHistogram(HistogramCanvas):
         else:
             ax.set_ylim((0, ax.get_ylim()[1]))
 
-        ax.legend(ncols=ncols_legend)
+        ax.legend(loc=loc_legend, fontsize=9, frameon=False, framealpha=0.7, ncols=ncols_legend)
         self.add_labels(ax=ax)
         ax.set_xlim(self.range)
         self.b2fig.shift_offset_text_position_old(ax)
@@ -1460,7 +1508,10 @@ class StackedHistogram(HistogramCanvas):
     def __str__(self):
         ret_str = "StackedHistogram Object:\n"
         ret_str +="========================\n"
-        ret_str +=f"lumi: {self.lumi:.2f}\n\n"
+        if self.lumi is None:
+            ret_str +=f"lumi: None\n\n"
+        else:
+            ret_str +=f"lumi: {self.lumi:.2f}\n\n"
 
         if self.data_hist:
             ret_str += self.data_hist.__str__()

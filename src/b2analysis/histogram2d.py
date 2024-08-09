@@ -91,6 +91,25 @@ class HistogramBase2D(HistogramBase):
         self.err = self.calc_weighted_uncert(data=data, weights=self.weights, bin_edges=self.bin_edges)
 
 
+    def init_from_hist(self, data, kwargs):
+        """Create the Histogram object from an existing Histogram, basically we are just copying the values.
+        """
+        if (not "bins" in kwargs or len(list(kwargs["bins"][0])) != len(list(data[0]))+1) and \
+           (not "bins" in kwargs or len(list(kwargs["bins"][1])) != np.array(data).shape[1]+1):
+            print(f"failed, len(data)+1 = {len(list(data[0]))+1} == len(bins) = {len(list(kwargs['bins'][0]))}")
+            print(f"failed, len(data)+1 = {np.array(data).shape[1]+1} == len(bins) = {len(list(kwargs['bins'][1]))}")
+            raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
+        self.bin_edges = np.array(kwargs["bins"])
+        self.entries = np.array(data)
+        self._update_bins()
+        if "err" in kwargs:
+            self.err = copy.deepcopy(np.array(kwargs["err"]))
+            self.stat_uncert = None #omit wrong uncertainty calculation
+        else:
+            self.update_hist()
+        #self.size = self.entries.size
+
+
     def _update_bins(self):
         #self.bin_centers = [np.around(np.array((bin_edges[1:]+bin_edges[:-1])/2, dtype=np.float64), 5) for bin_edges in self.bin_edges]
         self.bin_centers = []
@@ -197,7 +216,7 @@ class HistogramBase2D(HistogramBase):
             assert self.unit == other.unit, "Hist units not compatible!"
 
 
-    def plot(self, fig=None, ax=None, xlabel=None, ylabel=None, figsize=None, additional_info="", cut_0=True, contour=None, level=None, contour_label=None, **kwargs):
+    def plot(self, fig=None, ax=None, xlabel=None, ylabel=None, zlabel='events', figsize=None, additional_info="", cut_0=True, contour=None, level=None, contour_label=None, **kwargs):
         if not xlabel:
             xlabel=""
         if not ylabel:
@@ -226,27 +245,27 @@ class HistogramBase2D(HistogramBase):
         cmap.set_bad(color='white')
 
         # Plot the 2D histogram
-        cm = self.ax.pcolormesh(_xedges, _yedges, masked_data.T, cmap='viridis', **kwargs)
-        
+        cm = self.ax.pcolormesh(_xedges, _yedges, masked_data.T, cmap=self.b2fig.colors.cm["blue_green_yellow"], **kwargs)
+
         if contour is not None:
             self.check_compatibility(contour)
             if level is None:
                 level = [np.array(contour.entries).max()/10]
-            c= self.ax.contour(contour.entries.T, extent=[contour.bin_edges[0][0], contour.bin_edges[0][-1], 
+            c= self.ax.contour(contour.entries.T, extent=[contour.bin_edges[0][0], contour.bin_edges[0][-1],
                                                     contour.bin_edges[1][0], contour.bin_edges[1][-1]],
                         levels=level, colors=["red"])
             le, _ = c.legend_elements()
             self.ax.legend([le[0]], [f'{contour_label}'], fontsize=9, frameon=True, framealpha=0.7)
-            
-        
+
+
         self.ax.set_xlabel(xlabel)
         self.ax.set_ylabel(ylabel)
 
         if not fig and not ax:
-            self.fig.colorbar(cm, label='Events', )
+            self.fig.colorbar(cm, label=zlabel)
             return self.fig, self.ax
         return cm
-    
+
 class Histogram2D(HistogramBase2D, Histogram):
     pass
 
@@ -330,6 +349,7 @@ class StackedHistogram2D(StackedHistogram, HistogramBase2D):
         """Hack to deal with parsing the bin edges in the 2D Histograms
         """
         return bin_edges
-    
+
     def plot(self, *args, **kwargs):
         return HistogramBase2D.plot(self, *args, **kwargs)
+
