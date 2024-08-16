@@ -822,7 +822,7 @@ class HistogramCanvas(CanvasBase):
             print(self.hists.keys())
 
         uncert_label = True
-        plot_args = kwargs.get("plot_args", {})
+        plot_args = copy.deepcopy(kwargs.get("plot_args", {}))
         ncols_legend = plot_args.get("ncols", 1)
         loc_legend = plot_args.get("loc", None)
         if "ncols" in plot_args:
@@ -1278,7 +1278,7 @@ class StackedHistogram(HistogramCanvas):
 
         self.color_scheme(reverse=reverse_colors, cm=cm)
         colors=self.colors
-        plot_args = kwargs.get("plot_args", {})
+        plot_args = copy.deepcopy(kwargs.get("plot_args", {}))
         ncols_legend = plot_args.pop("ncols", 1)
         loc_legend = plot_args.pop("loc", None)
 
