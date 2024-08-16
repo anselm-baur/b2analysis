@@ -90,7 +90,7 @@ class CanvasBase(PickleBase):
         self.hatch_args = {}
 
         if plot_state is not None:
-            print("got plot state")
+            #print("got plot state")
             self.plot_state = plot_state
 
     def savefig(self, filename=""):
@@ -998,7 +998,7 @@ class HistogramCanvas(CanvasBase):
         self.ax = ax[0]
         if additional_info:
                 self.description["additional_info"] = additional_info
-        print(self.description)
+        #print(self.description)
         self.b2fig.add_descriptions(ax=self.ax, **self.description)
         self.ax_pull = ax[1]
         #move the xlabel to the pull plot
