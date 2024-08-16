@@ -1,4 +1,4 @@
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 
 from b2analysis.tools import *
 from b2analysis.efficiency import *

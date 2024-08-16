@@ -498,6 +498,15 @@ class Histogram(HistogramBase):
                             "preliminary": not is_simulation and is_preliminary})
 
 
+    @property
+    def b2color(self):
+        return self.color
+
+    @b2color.setter
+    def b2color(self, color):
+        self.color = self.b2fig.color(color)
+
+
     def re_scale(self, factor, update_lumi=False):
         """Rescale the histogram by a given factor.
         """
@@ -945,7 +954,7 @@ class HistogramCanvas(CanvasBase):
 
 
 
-    def pull_plot(self, dpi=90, figsize=(6,5), pull_args=None, additional_info="", height_ratios=None, ylim=None, pull_ylim=None, **kwargs):
+    def pull_plot(self, dpi=90, figsize=(6,5), pull_args=None, additional_info="", height_ratios=None, ylim=None, pull_ylim=None, plot_state=None, **kwargs):
         """
         :param dpi: _description_, defaults to 90
         :type dpi: int, optional
@@ -980,6 +989,8 @@ class HistogramCanvas(CanvasBase):
                     pull_args[pull_arg_key] = self.pull_args[pull_arg_key]
         if not pull_ylim is None:
             pull_args["ylim"] = pull_ylim
+        if plot_state is not None:
+            self.plot_state = plot_state
         self.b2fig = B2Figure(auto_description=False)
         if height_ratios is None:
             height_ratios = [2, 1]
@@ -1531,7 +1542,7 @@ class StackedHistogram(HistogramCanvas):
 
 
 def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additional_info="", output_dir="", log=True, pull_ylim=(0.8,1.2), pull_bar=True, fmt="o", savefig=False, suffix="",
-                        callback=None, xlabel="", corr=0, normalized=False, **kwargs):
+                        callback=None, xlabel="", corr=0, normalized=False, colors=None, **kwargs):
     """Creates a histogramCanvos object from noth histograms with a pull plot.
 
     :param name: name of the histogram canvas
@@ -1566,6 +1577,8 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
     :type xlabel: str, optional
     :param corr: correlation between the histograms, for same statistical sample use 1, independent samples use 0
     type corr: int, float
+    :param colos: colors the two plots are assigned
+    type colors: list of colors, optional, defaults None
     :return: The resulting HistogramCanvas from both histograms
     :rtype: HistogramCanvas
     """
@@ -1612,7 +1625,7 @@ def compare_histograms(name, hist_1, hist_2, name_1=None, name_2=None, additiona
     if additional_info:
         hist_canvas.description["additional_info"] = additional_info
     fig, ax = hist_canvas.pull_plot(histtype="step", figsize=(6,5),
-                    log=log, colors=["blue", "red"], pull_args=pull_args)
+                    log=log, colors=colors, pull_args=pull_args)
 
     if callback:
         callback(ax)
