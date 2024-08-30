@@ -267,7 +267,11 @@ class HistogramBase2D(HistogramBase):
         return cm
 
 class Histogram2D(HistogramBase2D, Histogram):
-    pass
+    
+    def create(self, *args, **kwargs):
+       """Creates an instance of this class.
+       """
+       return Histogram2D(*args, **kwargs)
 
 
 class StackedHistogram2D(StackedHistogram, HistogramBase2D):
@@ -283,6 +287,12 @@ class StackedHistogram2D(StackedHistogram, HistogramBase2D):
 
     def __init__(self, *args, **kwargs):
         StackedHistogram.__init__(self, *args, **kwargs)
+
+
+    def create(self, *args, **kwargs):
+       """Creates an instance of this class.
+       """
+       return StackedHistogram2D(*args, **kwargs)
 
 
     def get_stacked_entries(self):
