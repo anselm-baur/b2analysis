@@ -1103,7 +1103,7 @@ class HistogramCanvas(CanvasBase):
         if normalized:
             ylabel = ylabel + " Norm."
 
-        self.b2fig.shifr_offset_text_position_pull_old(ax)
+        self.b2fig.shift_offset_text_position_pull_old(ax)
 
         if x_log:
             ax.set_xscale("symlog")
