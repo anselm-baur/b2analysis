@@ -1314,7 +1314,7 @@ class StackedHistogram(HistogramCanvas):
 
 
 
-    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=None, histtype= "hatch", **kwargs):
+    def plot_ax(self, ax, reverse_colors=True, log=False, ylim=None, uncert_color="black", uncert_label="MC stat. unc.",  cm=None, histtype= "hatch", sort_hists=True, reverse_order=False, **kwargs):
         #colors = plt.cm.summer(np.linspace(0.1,0.8,len(self.hists)))
         #plt.cm.gist_earth
         if not self.b2fig:
@@ -1330,10 +1330,22 @@ class StackedHistogram(HistogramCanvas):
         bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
         stack = np.zeros(self.bin_centers.size)
         i=0
-        for name, hist in sorted(self.hists.items(), key=lambda item: item[1].entries.sum(), reverse=False):
+
+        hists_items = self.hists.items()
+        if sort_hists:
+            hists_items = sorted(self.hists.items(), key=lambda item: item[1].entries.sum(), reverse=reverse_order)
+        else:
+            if reverse_order:
+                hists_items = reversed(hists_items)
+        for name, hist in hists_items:
             # handle the date hists separate
             if name == "data":
                 continue
+
+            if hist.label:
+                label = hist.label
+            else:
+                label = name
 
             color = self.signal_color if hist.is_signal else colors[name]
 
@@ -1342,7 +1354,7 @@ class StackedHistogram(HistogramCanvas):
                     y = np.concatenate([[0], stack+hist.entries, [0]])
                     if not "linewidth" in plot_args and not "lw" in plot_args:
                         plot_args["lw"] = 0.9
-                    ax.step(x, y, label=name, color=color, **plot_args)
+                    ax.step(x, y, label=label, color=color, **plot_args)
                     #uncert = hist.err
                     #bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
                     #ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
@@ -1359,7 +1371,7 @@ class StackedHistogram(HistogramCanvas):
                 else:
                     hatch = "\\\\\\\\\\"
                 ax.fill_between(x, y1, y2,  color=color, **plot_args, hatch=hatch,  step='pre', facecolor="white", alpha=0.5)
-                ax.step(x, y2, label=name, color=color, lw=1.2)
+                ax.step(x, y2, label=label, color=color, lw=1.2)
             else:
 
                     #print(f"stack {name}")
@@ -1437,6 +1449,85 @@ class StackedHistogram(HistogramCanvas):
             ax.set_ylim(ylim)
         ax.set_ylabel(ylabel)
         ax.set_xlabel(xlabel)
+
+
+    def rank_bar_plot(self, name, n_show=20, log=False, color=None, plot_state="(Simulation)", xlabel="events", figsize=[6,5], parse_labels=None, fraction=True, precission=2, cm=None, reverse_colors=False):
+        from matplotlib.ticker import NullLocator
+        if color is None:
+            self.color_scheme(reverse=reverse_colors, cm=cm)
+            color = self.colors[name]
+        else:
+            color = self.b2fig.color(color)
+
+        # Sorting the values and labels based on values
+        labels, values = self.rank_entries(name=name, n_show=n_show, parse_labels=parse_labels, precission=precission)
+        print(values)
+        # Create the horizontal bar plot
+
+        description = {"plot_state": plot_state,
+                    "luminosity": self.lumi
+                    }
+        b2fig = B2Figure(description=description, auto_description=True)
+        fig,ax = b2fig.create(figsize=figsize)
+        #canvas.b2fig.add_descriptions(ax, **description)
+
+        ax.barh(labels[::-1], values[::-1], color=color)
+        #ax.barh(["A", "B"], [5, 15])
+
+        # Ensure the bars evolve from the y-axis
+        if log:
+            ax.set_xscale("log")
+        ax.yaxis.set_minor_locator(NullLocator())
+        #ax.set_xlim([0, 2*1e7])
+
+        ax.set_xlabel(xlabel)
+        if fraction:
+            ticklabels = []
+            tot = self[name].entries.sum()
+            for frac in values[::-1]:
+                ticklabels.append(f"{np.round(frac/tot*100, precission)}")
+            ax2 = ax.twinx()
+            # Copying the y-ticks from the first axis to the second
+            ax2.set_ylim(ax.get_ylim())
+            ax2.set_yticks(ax.get_yticks())
+            ax2.set_yticklabels(ticklabels)
+            ax2.yaxis.set_minor_locator(NullLocator())
+            ax2.set_ylabel("fraction in %")
+        return fig, ax
+
+
+    def rank_entries(self, name, n_show=20, parse_labels=None, precission=2):
+        def sort_indices(input_list):
+            # Create a list of tuples where each tuple is (index, value)
+            indexed_list = list(enumerate(input_list))
+
+            # Sort the indexed list based on the values (second element of each tuple)
+            sorted_indexed_list = sorted(indexed_list, key=lambda x: x[1], reverse=True)
+
+            # Extract the indices from the sorted list
+            sorted_indices = [index for index, value in sorted_indexed_list]
+
+            return sorted_indices
+
+        tot = self[name].entries.sum()
+        other = 0
+        sorted_indices = sort_indices(self[name].entries)
+        labels = []
+        values = []
+        for n, i in enumerate(sorted_indices):
+            entry = self[name].entries[i]
+            if n >= n_show:
+                other += entry
+                continue
+            label = parse_labels[f"{self.bin_edges[i]:.0f}"] if parse_labels is not None else f"{self.bin_edges[i]:.0f}"
+            labels.append(label)
+            values.append(entry)
+            print(f"{self.bin_edges[i]:.0f}: \t {entry:.0f} ({np.round(entry/tot*100, precission)}%)")
+        if other > 0:
+            labels.append(f"other")
+            values.append(other)
+            print(f"other: \t {other:.0f} ({np.round(other/tot*100, precission)}%)")
+        return labels, values
 
 
     def get_stat_uncert(self):
