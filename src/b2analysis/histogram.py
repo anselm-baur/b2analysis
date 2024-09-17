@@ -444,6 +444,9 @@ class HistogramBase(CanvasBase):
 
 
     def __add__(self, other):
+        if other is None:
+            print("Try to add emtpy Histogram... skip!")
+            return self.copy()
         self.check_compatibility(other)
         add_hist = self.copy()
         add_hist.entries = add_hist.entries + other.entries
@@ -1555,7 +1558,9 @@ class StackedHistogram(HistogramCanvas):
         #elif item == self.data_hist.name:
         #    return self.data_hist
         else:
-            raise ValueError(f"{item} not a valid histogram!")
+            pass
+            #removed ValueError because test=True in tau lifetime analysis framework can reurn empty histograms
+            #raise ValueError(f"{item} not a valid histogram!")
 
 
     def __str__(self):
