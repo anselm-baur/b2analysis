@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 from b2style.b2figure import B2Figure
 import copy
 import pickle
+from scipy.optimize import curve_fit
+import scipy.stats as spst
 
 
 def parse_bin_edges(bin_edges):
@@ -12,6 +14,17 @@ def parse_bin_edges(bin_edges):
     due to bit precision limits.
     """
     return np.around(np.array(copy.deepcopy(bin_edges), dtype=np.float64), 5)
+
+
+def gauss(x, *params):
+    a, mu, sigma = params
+    return a*np.exp(-(x-mu)**2/(2.*sigma**2))
+
+def students_t(x, a, *params):
+    return a*spst.t.pdf(x,*params)
+
+def chi2(x, x0, ndf):
+        return np.sum((x-x0)**2/x0/ndf)
 
 
 class PickleBase(object):
@@ -118,6 +131,79 @@ class CanvasBase(PickleBase):
     def plot_state(self, value):
         self._plot_state = value
         self.description["plot_state"] = value
+
+
+    def fit(self, f, bounds, p0, is_data=False, fit_color=None):
+        h_y = self.entries
+        h_x = self.bin_centers
+        h_err = self.err
+
+        popt, pcov = curve_fit(f, h_x, h_y, p0=p0, sigma=h_err,
+                        method="trf", absolute_sigma=True, jac="3-point",
+                        bounds=bounds)
+
+        return popt, pcov
+
+
+    def plot_fit(self, fit_f, is_data=False, fit_color=None, bounds=None, p0=None, uncert_label=False, info="", textpos=None, **kwargs):
+        h_y = self.entries
+        h_x = self.bin_centers
+        if fit_f == "student":
+            f  = students_t
+            if p0 is None:
+                p0 = [h_y.max(), 1, 0, 30]
+            if bounds is None:
+                bounds=[[1000,1,-10,0],[np.inf, np.inf, 10, np.inf]]
+        elif fit_f == "gauss":
+            f = gauss
+            if p0 is None:
+                p0 = [h_y.max(), 0, 1]
+            if bounds is None:
+                bounds=[[h_y.max()*0.9,-np.inf,0],[np.inf, np.inf, np.inf]]
+        else:
+            raise RuntimeError(f"Unknown fit function: {fit_f}")
+
+        print("p0:", p0)
+
+        popt, pcov = self.fit(f=f, is_data=is_data, fit_color=fit_color, bounds=bounds, p0=p0)
+
+        histtype = "errorbar" if is_data else 'hatch'
+        fig, ax = self.plot(figsize=[6,5], uncert_label=uncert_label, additional_info=info, histtype=histtype, **kwargs)
+
+        uncert_label = "" if is_data else "stat. uncert."
+        if fit_color is None:
+            color = "red" if is_data else "blue"
+        else:
+            color = fit_color
+
+        xfit = np.linspace(self.bin_edges[0], self.bin_edges[-1], 100)
+        ax.plot(xfit, f(xfit, *popt), color=color, label="fit")
+        #print("h_x.size: ", h_x.size)
+        perr = np.sqrt(np.diag(pcov))
+
+        if fit_f == "student":
+            fit_res = "opt. parameters:\n" + \
+                r"    $A$="+f"{popt[0]:.0f}$\pm${perr[0]:.0f}\n" + \
+                r"    $\nu$="+f"{popt[1]:.2f}$\pm${perr[1]:.2f}\n" + \
+                r"    $\mu$="+f"{popt[2]:.2f}$\pm${perr[2]:.2f}\n" + \
+                r"    $\sigma$="+f"{popt[3]:.2f}$\pm${perr[3]:.2f}\n" + \
+                r"$\chi^{2}$/ndf: " + f"{chi2(f(h_x, *popt), h_y, ndf=h_x.size):.2f}"
+        elif fit_f == "gauss":
+            fit_res = "opt. parameters:\n" + \
+                r"    $A$="+f"{popt[0]:.0f}$\pm${perr[0]:.0f}\n" + \
+                r"    $\mu$="+f"{popt[1]:.2f}$\pm${perr[2]:.2f}\n" + \
+                r"    $\sigma$="+f"{popt[2]:.2f}$\pm${perr[2]:.2f}\n" + \
+                r"$\chi^{2}$/ndf: " + f"{chi2(f(h_x, *popt), h_y, ndf=h_x.size):.2f}"
+
+
+
+        if textpos is None:
+            x_text = ax.get_xlim()[0]+(ax.get_xlim()[1]-ax.get_xlim()[0])*0.05
+            textpos = [x_text, h_y.max()*0.9]
+
+        ax.text(*textpos, fit_res)
+        ax.legend()
+        return fig, ax
 
 
 
@@ -476,6 +562,9 @@ class HistogramBase(CanvasBase):
             data = np.array(self.entries)/np.array(other.entries)
             if hasattr(self, "err") and hasattr(other, "err"):
                 err = np.sqrt((self.err/other.entries)**2+(other.err*self.entries/other.entries**2)**2-2*self.entries/other.entries**3*self.err*other.err*corr)
+                #print(f"corr part: {2*self.entries/other.entries**3*self.err*other.err}")
+                #print(other.name, other.err)
+                #print(self.name, self.err)
             else:
                 err = None
             #print(self.entries)
@@ -543,8 +632,14 @@ class Histogram(HistogramBase):
         self.re_scale(factor=factor, update_lumi=update_lumi)
 
 
-    def plot(self, fig=None, ax=None, figsize=(6,6), histtype="hatch", dpi=100, uncert_label=True, log=False, ylim=False, color="blue",
-             additional_info=None, **kwargs):
+    def plot(self, fig=None, ax=None, figsize=(6,5), histtype="hatch", dpi=90, uncert_label=True, log=False, ylim=False, color=None,
+             xlabel=None, additional_info=None, **kwargs):
+
+        if color is None:
+            if self.color is not None:
+                color = self.color
+            else:
+                color = self.b2fig.color("dark_blue")
 
         if additional_info:
                 self.description["additional_info"] = additional_info
@@ -557,7 +652,7 @@ class Histogram(HistogramBase):
         elif histtype == "step":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y = np.concatenate([[0], self.entries, [0]])
-            ax.step(x, y, label=self.label, **self.setp_args, **kwargs)
+            ax.step(x, y, label=self.label, color=color, **self.setp_args, **kwargs)
             uncert = self.err
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
             ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
@@ -581,13 +676,16 @@ class Histogram(HistogramBase):
         if ylim:
             span = self.entries.max() - self.entries.min()
             ax.set_ylim([(self.entries-self.err).min()-span*0.3, (self.entries+self.err).max()+span*0.3])
-        ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
+
+        if xlabel is None:
+            ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
+        ax.set_xlabel(xlabel)
 
         b2fig.shift_offset_text_position_old(ax)
         ax.set_ylabel("events")
         if log:
             ax.set_yscale("log")
-        ax.legend()
+        ax.legend(fontsize=9)
 
         return fig, ax
 
@@ -706,6 +804,24 @@ class HistogramCanvas(CanvasBase):
         """Hack to deal with parsing the bin edges in the 2D Histograms
         """
         return parse_bin_edges(bin_edges=bin_edges)
+
+
+    def combine_hists(self, hist_list, new_name, new_label=None, color=None):
+        combined_hist = None
+        if new_name in self.hists.keys() and new_name not in hist_list:
+            raise ValueError(f"{new_name} already is hists!")
+        for hist_name in hist_list:
+            if hist_name not in self.hists.keys() :
+                raise ValueError(f"{hist_name} not in hists!")
+            if combined_hist is None:
+                combined_hist = copy.deepcopy(self.hists[hist_name])
+            else:
+                combined_hist = combined_hist + self.hists[hist_name]
+            del self.hists[hist_name]
+        combined_hist.name = new_name
+        combined_hist.label = new_label
+        combined_hist.color = color
+        self.hists.update({new_name: combined_hist})
 
 
     def add_histogram(self, hist, label=True, color=None, bins=None):
@@ -888,7 +1004,12 @@ class HistogramCanvas(CanvasBase):
                 else:
                     hatch = "\\\\\\\\\\"
                 ax.fill_between(x, y1, y2,  color=color, **plot_args, hatch=hatch,  step='pre', facecolor="white", alpha=0.5)
-                ax.step(x, y2, label=name, color=color, lw=1.2)
+                ax.step(x, y2, label=label, color=color, lw=1.2)
+                uncert = hist.err
+                bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
+                ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=hist.entries-uncert,
+                       edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
+                if uncert_label: uncert_label = False
             else:
                 raise ValueError(f"histtype {histtype} not implemented!")
         ax.set_xlim((*self.range))
@@ -951,7 +1072,7 @@ class HistogramCanvas(CanvasBase):
         return signal_names
 
 
-    def color_scheme(self, reverse=False, exclude_signals=True,  cm=None):
+    def color_scheme(self, reverse=False, exclude_signals=True,  cm=None, debug=False):
         #cm = plt.cm.seismic
         #plt.cm.gist_earth
         if cm is None:
@@ -961,23 +1082,45 @@ class HistogramCanvas(CanvasBase):
 
         self.signal_color = self.b2fig.colors.color["dark_red"] #plt.cm.seismic(0.9)
 
+        if debug:
+            print("reverse:", reverse)
+            print("exclude_signals:", exclude_signals)
+            print("cm:", cm)
+            print("colors (before):", self.colors)
+
         if exclude_signals:
             nhists = len(self.hists)-self.signals
             signals = self.get_signal_names()
             iter_histsts = copy.deepcopy(self.hists)
             for sig in signals:
+                if debug:
+                    print("\t ignor signal hist:", sig)
                 del(iter_histsts[sig])
                 self.colors[sig] = self.signal_color
         else:
             nhists = len(self.hists)
-        linspace = np.linspace(cm_low,cm_high,nhists)
+
+        print("nhists:", nhists)
+        if nhists == 1:
+            linspace=[cm_low]
+        else:
+            linspace = np.linspace(cm_low,cm_high,nhists)
+
         sorted_iter_hists = sorted(iter_histsts.items(), key=lambda item: item[1].entries.sum(), reverse=False)
+        if debug:
+            print("sorted_iter_hists:", sorted_iter_hists)
+            print("linspace:", linspace)
         for name_hist, color in zip(sorted_iter_hists, cm(np.flip(linspace) if reverse else linspace)):
             name = name_hist[0]
+            if debug:
+                print("set color for:", name)
             if self.hists[name].color:
                 self.colors[name] = self.hists[name].color
             else:
                 self.colors[name] = color
+
+        if debug:
+            print("colors (after):", self.colors)
 
 
 
@@ -1086,7 +1229,9 @@ class HistogramCanvas(CanvasBase):
                     nom_hist_label = nom_hist.name.replace("_",r"\_").replace(" ",r"\;")
                     ylabel = r"$\mathbf{\frac{"+hist_label+r"-"+nom_hist_label+r"}{"+nom_hist_label+r"}}$"
             with np.errstate(divide='ignore',invalid='ignore'):
-                plot_err = np.sqrt((_hist.err/nom_hist.entries)**2+(nom_hist.err*_hist.entries/nom_hist.entries**2)**2-2*_hist.entries/nom_hist.entries**3*_hist.err*nom_hist.err*corr)
+                print(f"calc error bars with correlation {corr}")
+                #plot_err = np.sqrt((_hist.err/nom_hist.entries)**2+(nom_hist.err*_hist.entries/nom_hist.entries**2)**2-2*_hist.entries/nom_hist.entries**3*_hist.err*nom_hist.err*corr)
+                plot_err = _hist.corr_div(nom_hist, corr).err
             ax.errorbar(bin_centers, plot, yerr=plot_err, fmt=fmt, color=hist_color, markersize='2.2', elinewidth=0.5)
 
         if type(hist_name) == list:
