@@ -145,7 +145,7 @@ class CanvasBase(PickleBase):
         return popt, pcov
 
 
-    def plot_fit(self, fit_f, is_data=False, fit_color=None, bounds=None, p0=None, uncert_label=False, info="", textpos=None, **kwargs):
+    def plot_fit(self, fit_f, is_data=False, fit_color=None, bounds=None, p0=None, uncert_label=True, info="", textpos=None, **kwargs):
         h_y = self.entries
         h_x = self.bin_centers
         if fit_f == "student":
@@ -159,13 +159,14 @@ class CanvasBase(PickleBase):
             if p0 is None:
                 p0 = [h_y.max(), 0, 1]
             if bounds is None:
-                bounds=[[h_y.max()*0.9,-np.inf,0],[np.inf, np.inf, np.inf]]
+                bounds=[[h_y.max()*0.1,-np.inf,0],[np.inf, np.inf, np.inf]]
         else:
             raise RuntimeError(f"Unknown fit function: {fit_f}")
 
         print("p0:", p0)
 
         popt, pcov = self.fit(f=f, is_data=is_data, fit_color=fit_color, bounds=bounds, p0=p0)
+        popt, pcov = self.fit(f=f, is_data=is_data, fit_color=fit_color, bounds=bounds, p0=popt)
 
         histtype = "errorbar" if is_data else 'hatch'
         fig, ax = self.plot(figsize=[6,5], uncert_label=uncert_label, additional_info=info, histtype=histtype, **kwargs)
@@ -177,7 +178,7 @@ class CanvasBase(PickleBase):
             color = fit_color
 
         xfit = np.linspace(self.bin_edges[0], self.bin_edges[-1], 100)
-        ax.plot(xfit, f(xfit, *popt), color=color, label="fit")
+        ax.plot(xfit, f(xfit, *popt), color=color, label=f"{fit_f} fit")
         #print("h_x.size: ", h_x.size)
         perr = np.sqrt(np.diag(pcov))
 
@@ -191,7 +192,7 @@ class CanvasBase(PickleBase):
         elif fit_f == "gauss":
             fit_res = "opt. parameters:\n" + \
                 r"    $A$="+f"{popt[0]:.0f}$\pm${perr[0]:.0f}\n" + \
-                r"    $\mu$="+f"{popt[1]:.2f}$\pm${perr[2]:.2f}\n" + \
+                r"    $\mu$="+f"{popt[1]:.2f}$\pm${perr[1]:.2f}\n" + \
                 r"    $\sigma$="+f"{popt[2]:.2f}$\pm${perr[2]:.2f}\n" + \
                 r"$\chi^{2}$/ndf: " + f"{chi2(f(h_x, *popt), h_y, ndf=h_x.size):.2f}"
 
@@ -199,7 +200,7 @@ class CanvasBase(PickleBase):
 
         if textpos is None:
             x_text = ax.get_xlim()[0]+(ax.get_xlim()[1]-ax.get_xlim()[0])*0.05
-            textpos = [x_text, h_y.max()*0.9]
+            textpos = [x_text, h_y.max()*0.8]
 
         ax.text(*textpos, fit_res)
         ax.legend()
@@ -632,8 +633,14 @@ class Histogram(HistogramBase):
         self.re_scale(factor=factor, update_lumi=update_lumi)
 
 
-    def plot(self, fig=None, ax=None, figsize=(6,5), histtype="hatch", dpi=90, uncert_label=True, log=False, ylim=False, color=None,
+    def plot(self, fig=None, ax=None, figsize=(6,5), histtype="hatch", dpi=90, uncert_label=None, log=False, ylim=False, color=None,
              xlabel=None, additional_info=None, **kwargs):
+
+        if uncert_label is None or (isinstance(uncert_label, bool) and uncert_label == True):
+            uncert_label = "MC stat. unc."
+        elif (isinstance(uncert_label, bool) and uncert_label == False):
+            uncert_label = ""
+
 
         if color is None:
             if self.color is not None:
@@ -656,7 +663,7 @@ class Histogram(HistogramBase):
             uncert = self.err
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
             ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
-                    edgecolor="grey",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
+                    edgecolor="grey",hatch="///////", fill=False, lw=0,label=uncert_label)
             if uncert_label: uncert_label = False
         elif histtype == "hatch":
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
@@ -667,7 +674,7 @@ class Histogram(HistogramBase):
             uncert = self.err
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
             ax.bar(x=self.bin_centers, height=2*uncert, width=bin_width, bottom=self.entries-uncert,
-                edgecolor="black",hatch="///////", fill=False, lw=0,label="MC stat. unc." if uncert_label else "")
+                edgecolor="black",hatch="///////", fill=False, lw=0,label=uncert_label)
             if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
         ax.set_xlim((*self.range))
@@ -692,6 +699,26 @@ class Histogram(HistogramBase):
 
     def compare(self, other, **kwargs):
         return compare_histograms(f"compare {self.label}", other, self, **kwargs)
+
+
+    def get_hist(self, name="", label="", bins=None, lumi=None, **kwargs):
+        """Return the stacked entries as histogram
+
+        :return: stacked histogram
+        :rtype: Histogram
+        """
+        if not name:
+            name=self.name
+        if not label:
+            label=name
+        if lumi is None:
+            lumi = self.lumi
+
+        hist = Histogram(name, self.entries, var=self.var, lumi=lumi, bins=self.bin_edges, err=self.err, is_hist=True, label=label, **kwargs)
+
+        if bins is not None:
+            hist.rebin(bins)
+        return hist
 
 
     def __str__(self):
@@ -913,14 +940,14 @@ class HistogramCanvas(CanvasBase):
         self.description["luminosity"] = self.lumi
 
 
-    def plot(self, dpi=90, figsize=(6,5), pull_args={}, additional_info="", ylim=None, **kwargs):
+    def plot(self, dpi=90, figsize=(6,5), pull_args={}, additional_info="", ylim=None, cm=None, **kwargs):
         """Plot the histogram canvas."""
 
         # make sure we have colors for our histograms
         if not "colors" in kwargs and len(self.colors) != len(self.hists) or ("colors" in kwargs and len(kwargs["colors"]) != len(self.hists)):
             print("create colors...")
             reverse_colors = False if not "reverse_colors" in kwargs else kwargs["reverse_colors"]
-            self.color_scheme(reverse=reverse_colors)
+            self.color_scheme(reverse=reverse_colors, cm=cm)
 
         if "hist_name" in pull_args and "nom_hist_name" in pull_args:
             self.b2fig = B2Figure(auto_description=False)
@@ -1099,8 +1126,10 @@ class HistogramCanvas(CanvasBase):
                 self.colors[sig] = self.signal_color
         else:
             nhists = len(self.hists)
-
-        print("nhists:", nhists)
+            
+        if debug:
+            print("nhists:", nhists)
+            
         if nhists == 1:
             linspace=[cm_low]
         else:
@@ -1125,7 +1154,7 @@ class HistogramCanvas(CanvasBase):
 
 
 
-    def pull_plot(self, dpi=90, figsize=(6,5), pull_args=None, additional_info="", height_ratios=None, ylim=None, pull_ylim=None, plot_state=None, empty_pull=False, **kwargs):
+    def pull_plot(self, dpi=90, figsize=(6,5), pull_args=None, additional_info="", height_ratios=None, ylim=None, pull_ylim=None, plot_state=None, empty_pull=False, labels=None, **kwargs):
         """
         :param dpi: _description_, defaults to 90
         :type dpi: int, optional
@@ -1137,6 +1166,10 @@ class HistogramCanvas(CanvasBase):
         :type additional_info: str, optional
         :param height_ratios: set the height ratios of the subplots
         :type height_args: list, tupel, optional, defaults to [2,1]
+        :param empty_pull: create the pull sub plot but keep it empty, defaults to False
+        :type empty_pull: bool, optional
+        :param labels: overwrite the histogram's labels, defaults to None
+        :type labels: dict, optional
         :return: _description_
         :rtype: _type_
 
@@ -1173,10 +1206,13 @@ class HistogramCanvas(CanvasBase):
         #print(self.description)
         self.b2fig.add_descriptions(ax=self.ax, **self.description)
         self.ax_pull = ax[1]
-        #move the xlabel to the pull plot
 
         self.ax.set_xticklabels([])
         self.fig.subplots_adjust(hspace=0.05)
+        
+        # overwrite the histogram's labels
+        if labels is not None:
+            self.set_hist_labels(hist_labels_dict=labels)
 
         self.plot_ax(self.ax, ylim=ylim, **kwargs)
         self.b2fig.shift_offset_text_position(self.ax)
@@ -1279,6 +1315,28 @@ class HistogramCanvas(CanvasBase):
             return True
         else:
             return False
+        
+    def set_hist_labels(self, hist_labels_dict):
+        """Overwrites the histogram labels, provide a dictionary like:
+            {"histname1": "new label1",
+             "histname2": "hew label3",
+             ...
+             }
+        """
+        for hist_name, hist_label in hist_labels_dict.items():
+            if self[hist_name] is None:
+                continue
+            old_hist_label = self[hist_name].label
+            self[hist_name].label = hist_label
+            print(f"updated {hist_name} label: {old_hist_label} -> {hist_label}")
+            
+        
+    def __getitem__(self, item):
+        """Make histograms directly accessible
+        """
+        if item in self.hists:
+            return self.hists[item]
+        return None
 
 
 
