@@ -99,7 +99,7 @@ class HistogramBase2D(HistogramBase):
             print(f"failed, len(data)+1 = {len(list(data[0]))+1} == len(bins) = {len(list(kwargs['bins'][0]))}")
             print(f"failed, len(data)+1 = {np.array(data).shape[1]+1} == len(bins) = {len(list(kwargs['bins'][1]))}")
             raise ValueError("bins expectes when is_hist is true, with len(data)+1 == len(bins)!")
-        self.bin_edges = np.array(kwargs["bins"])
+        self.bin_edges = kwargs["bins"]#np.array(kwargs["bins"])
         self.entries = np.array(data)
         self._update_bins()
         if "err" in kwargs:
@@ -267,6 +267,31 @@ class HistogramBase2D(HistogramBase):
             self.fig.colorbar(cm, label=zlabel)
             return self.fig, self.ax
         return cm
+    
+    
+    def rebin(self, bin_edges):
+        if not np.all(np.isin(bin_edges[0], self.bin_edges[0])) or not np.all(np.isin(bin_edges[1], self.bin_edges[1])):
+            raise ValueError("new bin edges dont intersect with the old bin edges!")
+        
+        new_shape = [len(bin_edges[0])-1, len(bin_edges[1])-1]
+        new_entries = np.zeros(new_shape)
+        new_err = np.zeros(new_shape)
+        # first we sum all x values along the y axis
+        for i,(x_0,x_1) in enumerate(zip(bin_edges[0][0:-1], bin_edges[0][1:])):
+            i_0 = np.where(self.bin_edges[0] == x_0)[0][0]
+            i_1 = np.where(self.bin_edges[0] == x_1)[0][0]
+            # then we sum along the condensed x line all y bins
+            for j,(y_0,y_1) in enumerate(zip(bin_edges[1][0:-1], bin_edges[1][1:])):
+                j_0 = np.where(self.bin_edges[1] == y_0)[0][0]
+                j_1 = np.where(self.bin_edges[1] == y_1)[0][0]
+                # the added up 2d area is now a scalar
+                new_entries[i,j] = self.entries[i_0:i_1][:].sum(axis=0)[j_0:j_1].sum()
+                # quadratig sum of errors
+                new_err[i,j] = np.sqrt((self.entries[i_0:i_1][:]**2).sum(axis=0)[j_0:j_1].sum())
+        self.entries = new_entries
+        self.err = new_err
+        self.bin_edges = bin_edges
+        self._update_bins()
 
 class Histogram2D(HistogramBase2D, Histogram):
 

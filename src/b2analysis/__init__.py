@@ -1,7 +1,10 @@
 __version__ = "0.3.0"
 
 from b2analysis.tools import *
-from b2analysis.efficiency import *
+try:
+    from b2analysis.efficiency import *
+except:
+    pass
 from b2analysis.elog import *
 from b2analysis.ntuples import *
 from b2analysis.admin import *

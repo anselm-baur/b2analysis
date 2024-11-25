@@ -32,6 +32,15 @@ class Test_Histogram2D():
         assert  np.all(np.diag(h.err) == 4), f"uncertainty is not 4 (2*sqrt(4), {h.err}"
 
 
+    def test_rebin(self):
+        data = [4*[0.5] + 4*[1.5] + 4*[2.5] ,
+                4*[0.5] + 4*[1.5] + 4*[2.5]]
+        h = HistogramBase2D(name="test2d", data=data, bins=[[0,1,2,3],[0,1,2,3]], overflow_bin=True)
+        entries_before = h.entries
+        h.rebin(bin_edges=[[0,2,3],[0,1,3]])
+        assert h.entries.sum() == entries_before.sum(), f"entries after rebin not equeal ({entries_before.sum()} != {h.entries.sum()})"
+        
+
 
 class Test_StackedHistogram2D:
     def test_init(self):

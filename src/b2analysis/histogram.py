@@ -493,7 +493,7 @@ class HistogramBase(CanvasBase):
                     lw=0,label="stat. unc." if uncert_label else "")
             if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
-        ax.set_xlim((*self.range))
+        ax.set_xlim(self.range)
         ax.set_xlabel(f"{self.var}{unit if self.unit else ''}")
         ax.set_ylabel("events")
         if log:
@@ -587,7 +587,7 @@ class Histogram(HistogramBase):
     """Analysis Histogram Class."""
 
     def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, color=None, is_simulation=True, is_preliminary=False,
-                 additional_info=None, b2color=None, **kwargs):
+                 additional_info=None, experiment="", plot_state=None, lumi_str=None, b2color=None, **kwargs):
         super().__init__(name=name, data=data, scale=lumi_scale, is_hist=is_hist, **kwargs)
         self.b2fig = B2Figure()
         self.is_signal = is_signal
@@ -597,10 +597,12 @@ class Histogram(HistogramBase):
         if b2color is not None:
             self.b2color = b2color
 
-        self.description.update({"luminosity": self.lumi,
+        self.description.update({"luminosity": self.lumi if lumi_str is None else lumi_str,
                             "simulation": is_simulation,
                             "additional_info": additional_info,
-                            "preliminary": not is_simulation and is_preliminary})
+                            "preliminary": not is_simulation and is_preliminary,
+                            "experiment": experiment,
+                            "plot_state": plot_state})
 
 
     @property
@@ -623,7 +625,8 @@ class Histogram(HistogramBase):
         """
         super().re_scale(factor)
         if update_lumi:
-            self.lumi_scale *= factor
+            #self.lumi_scale *= factor
+            self.lumi *= factor
 
 
     def re_scale_to(self, target_lumi, update_lumi=True):
@@ -677,7 +680,7 @@ class Histogram(HistogramBase):
                 edgecolor="black",hatch="///////", fill=False, lw=0,label=uncert_label)
             if uncert_label: uncert_label = False
         unit = f" in {self.unit}"
-        ax.set_xlim((*self.range))
+        ax.set_xlim(self.range)
         if not log:
             ax.set_ylim([0, ax.get_ylim()[1]])
         if ylim:
@@ -771,7 +774,7 @@ class HistogramCanvas(CanvasBase):
     """Class to aggregate the Histogram objects and plot them
     for comparison."""
 
-    def __init__(self, lumi=None, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, **kwargs):
+    def __init__(self, lumi=None, var="", unit="", additional_info="", is_simulation=True, is_preliminary=False, experiment="", plot_state=None, lumi_str=None, **kwargs):
         CanvasBase.__init__(self,**kwargs)
 
         self.lumi = lumi
@@ -780,10 +783,13 @@ class HistogramCanvas(CanvasBase):
         self.unit = unit
         self.bin_edges = np.array([])
         self.bin_centers = np.array([])
-        self.description.update({"luminosity": self.lumi,
+        self.description.update({"luminosity": self.lumi if lumi_str is None else lumi_str,
                             "simulation": is_simulation,
                             "additional_info": additional_info,
-                            "preliminary": not is_simulation and is_preliminary})
+                            "preliminary": not is_simulation and is_preliminary,
+                            "experiment": experiment,
+                            "plot_state": plot_state,
+                            })
 
         self.b2fig = B2Figure(color_theme="phd")
         self.fig = None
@@ -1039,7 +1045,7 @@ class HistogramCanvas(CanvasBase):
                 if uncert_label: uncert_label = False
             else:
                 raise ValueError(f"histtype {histtype} not implemented!")
-        ax.set_xlim((*self.range))
+        ax.set_xlim(self.range)
         if xlabel:
             #ax.set_xlabel(xlabel)
             # is now set outside
@@ -1126,10 +1132,10 @@ class HistogramCanvas(CanvasBase):
                 self.colors[sig] = self.signal_color
         else:
             nhists = len(self.hists)
-            
+
         if debug:
             print("nhists:", nhists)
-            
+
         if nhists == 1:
             linspace=[cm_low]
         else:
@@ -1209,7 +1215,7 @@ class HistogramCanvas(CanvasBase):
 
         self.ax.set_xticklabels([])
         self.fig.subplots_adjust(hspace=0.05)
-        
+
         # overwrite the histogram's labels
         if labels is not None:
             self.set_hist_labels(hist_labels_dict=labels)
@@ -1315,7 +1321,7 @@ class HistogramCanvas(CanvasBase):
             return True
         else:
             return False
-        
+
     def set_hist_labels(self, hist_labels_dict):
         """Overwrites the histogram labels, provide a dictionary like:
             {"histname1": "new label1",
@@ -1329,8 +1335,8 @@ class HistogramCanvas(CanvasBase):
             old_hist_label = self[hist_name].label
             self[hist_name].label = hist_label
             print(f"updated {hist_name} label: {old_hist_label} -> {hist_label}")
-            
-        
+
+
     def __getitem__(self, item):
         """Make histograms directly accessible
         """
