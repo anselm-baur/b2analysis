@@ -267,12 +267,12 @@ class HistogramBase2D(HistogramBase):
             self.fig.colorbar(cm, label=zlabel)
             return self.fig, self.ax
         return cm
-    
-    
+
+
     def rebin(self, bin_edges):
         if not np.all(np.isin(bin_edges[0], self.bin_edges[0])) or not np.all(np.isin(bin_edges[1], self.bin_edges[1])):
             raise ValueError("new bin edges dont intersect with the old bin edges!")
-        
+
         new_shape = [len(bin_edges[0])-1, len(bin_edges[1])-1]
         new_entries = np.zeros(new_shape)
         new_err = np.zeros(new_shape)
@@ -299,6 +299,27 @@ class Histogram2D(HistogramBase2D, Histogram):
        """Creates an instance of this class.
        """
        return Histogram2D(*args, **kwargs)
+
+
+    def project_on_axis(self, axis, name=None):
+        if isinstance(axis, str):
+            if axis.lower() == "x":
+                axis_i = 0
+            elif axis.lower() == "y":
+                axis_i = 1
+            else:
+                raise ValueError(f"axis must be 'x', 'y', 0, or 1 not {axis.lower()}!")
+        elif isinstance(axis, int):
+            assert axis in [0, 1], "axis must be 'x', 'y', 0, or 1!"
+            axis_i = axis
+            axis = "x" if axis_i == 0 else "y"
+        else:
+            raise ValueError("axis must be 'x', 'y', 0, or 1!")
+
+        sum_axis = 0 if axis_i == 1 else 1
+        if name is None:
+            name = self.name+f"_{axis}_projection"
+        return Histogram(name, self.entries.sum(axis=sum_axis), err=np.sqrt((self.err**2).sum(axis=sum_axis)), bins=self.bin_edges[axis_i], lumi=self.lumi, is_hist=True)
 
 
 class StackedHistogram2D(StackedHistogram, HistogramBase2D):

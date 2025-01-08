@@ -637,7 +637,7 @@ class Histogram(HistogramBase):
 
 
     def plot(self, fig=None, ax=None, figsize=(6,5), histtype="hatch", dpi=90, uncert_label=None, log=False, ylim=False, color=None,
-             xlabel=None, additional_info=None, **kwargs):
+             xlabel=None, ylabel=None, additional_info=None, **kwargs):
 
         if uncert_label is None or (isinstance(uncert_label, bool) and uncert_label == True):
             uncert_label = "MC stat. unc."
@@ -692,7 +692,9 @@ class Histogram(HistogramBase):
         ax.set_xlabel(xlabel)
 
         b2fig.shift_offset_text_position_old(ax)
-        ax.set_ylabel("events")
+        if ylabel is None:
+            ylabel = "events"
+        ax.set_ylabel(ylabel)
         if log:
             ax.set_yscale("log")
         ax.legend(fontsize=9)
@@ -805,6 +807,8 @@ class HistogramCanvas(CanvasBase):
                 "ylim": [0.99, 1.01],
                 "pull_bar": False,
                 "corr": 0}
+
+        self.errorbar_args = {key: val for key, val in self.errorbar_args.items() if key not in ["color"]}
 
 
     #@property
@@ -979,8 +983,8 @@ class HistogramCanvas(CanvasBase):
         self.b2fig.shift_offset_text_position(self.ax)
         if not pull_args:
             xlabel = kwargs.get("xlabel", "")
-            print("xlabel:", xlabel)
-            self.add_labels(ax=self.ax, xlabel=xlabel)
+            ylabel = kwargs.get("ylabel", "")
+            self.add_labels(ax=self.ax, xlabel=xlabel, ylabel=ylabel)
 
         return self.fig, self.ax
 
@@ -1013,7 +1017,7 @@ class HistogramCanvas(CanvasBase):
                 color = colors[i]
             if histtype == "errorbar":
                 if not errorbar_args:
-                    errorbar_args = self.b2fig.errorbar_args
+                    errorbar_args = self.errorbar_args
                 ax.errorbar(self.bin_centers, hist.entries, yerr=hist.err, label=name, color=color, zorder=i*1000, **errorbar_args)
             elif histtype == "step":
                 x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])

@@ -39,7 +39,7 @@ class Test_Histogram2D():
         entries_before = h.entries
         h.rebin(bin_edges=[[0,2,3],[0,1,3]])
         assert h.entries.sum() == entries_before.sum(), f"entries after rebin not equeal ({entries_before.sum()} != {h.entries.sum()})"
-        
+
 
 
 class Test_StackedHistogram2D:
@@ -72,6 +72,6 @@ class Test_StackedHistogram2D:
         h_bkg = hs1.get_bkg_hist()
         assert (h1.entries - h_sig.entries).sum() == 0, "Signal hist entries not equal to initial signal hist"
         assert (h2.entries - h_bkg.entries).sum() == 0, "bkg hist entries not equal to initial bkg hist"
-        
-        
+
+
 
