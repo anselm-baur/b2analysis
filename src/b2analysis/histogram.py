@@ -82,6 +82,10 @@ class PickleBase(object):
         print(f"pickled: {file_name}")
 
 
+    def __repr__(self):
+        return f"<{type(self).__name__}:{self.name}>"
+
+
 
 class CanvasBase(PickleBase):
 
