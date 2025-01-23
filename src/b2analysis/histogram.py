@@ -557,6 +557,15 @@ class HistogramBase(CanvasBase):
         return self.corr_div(other, corr=0)
 
 
+    def zero_div(self, other):
+        """Division of two histograms without error correlation in the
+        uncertainties. NaN entries are set to 0
+        """
+        div = self.corr_div(other, corr=0)
+        div.entries = np.where((div.entries != np.inf) & (np.isnan(div.entries)==False), div.entries, 0)
+        return div
+
+
     def corr_div(self, other, corr=1):
         """Division of two histograms with allowed error correlation in the
         uncertainties.
@@ -590,7 +599,7 @@ class HistogramBase(CanvasBase):
 class Histogram(HistogramBase):
     """Analysis Histogram Class."""
 
-    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, color=None, is_simulation=True, is_preliminary=False,
+    def __init__(self, name, data, lumi, lumi_scale=1, is_signal=False, is_hist=False, color=None, is_simulation=False, is_preliminary=False,
                  additional_info=None, experiment="", plot_state=None, lumi_str=None, b2color=None, **kwargs):
         super().__init__(name=name, data=data, scale=lumi_scale, is_hist=is_hist, **kwargs)
         self.b2fig = B2Figure()
