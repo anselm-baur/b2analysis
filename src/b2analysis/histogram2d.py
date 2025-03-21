@@ -216,7 +216,7 @@ class HistogramBase2D(HistogramBase):
             assert self.unit == other.unit, "Hist units not compatible!"
 
 
-    def plot(self, fig=None, ax=None, xlabel=None, ylabel=None, zlabel='events', figsize=None, additional_info="", cut_0=True, contour=None, level=None, contour_label=None, plot_state=None, **kwargs):
+    def plot(self, fig=None, ax=None, xlabel=None, ylabel=None, zlabel='events', figsize=None, additional_info="", cut_0=True, contour=None, level=None, contour_label=None, plot_state=None, no_cm=False, **kwargs):
         if not xlabel:
             xlabel=""
         if not ylabel:
@@ -227,7 +227,7 @@ class HistogramBase2D(HistogramBase):
         if plot_state:
             self.description["plot_state"] = plot_state
         self.b2fig = B2Figure(auto_description=True, description=self.description)
-        if not fig and not ax:
+        if fig is None and ax is None:
             self.fig, self.ax = self.b2fig.create(figsize=figsize)
         else:
             self.fig = fig
@@ -263,7 +263,7 @@ class HistogramBase2D(HistogramBase):
         self.ax.set_xlabel(xlabel)
         self.ax.set_ylabel(ylabel)
 
-        if not fig and not ax:
+        if fig is None and ax is None:
             self.fig.colorbar(cm, label=zlabel)
             return self.fig, self.ax
         return cm
