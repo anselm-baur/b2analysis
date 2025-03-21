@@ -650,13 +650,15 @@ class Histogram(HistogramBase):
 
 
     def plot(self, fig=None, ax=None, figsize=(6,5), histtype="hatch", dpi=90, uncert_label=None, log=False, ylim=False, color=None,
-             xlabel=None, ylabel=None, additional_info=None, **kwargs):
+             xlabel=None, ylabel=None, additional_info=None, fill_args=None, **kwargs):
 
         if uncert_label is None or (isinstance(uncert_label, bool) and uncert_label == True):
             uncert_label = "MC stat. unc."
         elif (isinstance(uncert_label, bool) and uncert_label == False):
             uncert_label = ""
 
+        if fill_args is None:
+            fill_args = {}
 
         if color is None:
             if self.color is not None:
@@ -685,7 +687,7 @@ class Histogram(HistogramBase):
             x = np.concatenate([self.bin_edges, [self.bin_edges[-1]]])
             y1 =np.concatenate([[0], self.entries, [0]])
             hatch = "\\\\\\\\\\\\"
-            ax.fill_between(x, y1, lw=0.9, hatch=hatch, color=color, step='pre', facecolor="white", alpha=0.5)
+            ax.fill_between(x, y1, lw=0.9, hatch=hatch, color=color, step='pre', facecolor="white", alpha=0.5, **fill_args)
             ax.step(x, y1, label=self.name, color=color, lw=1.2)
             uncert = self.err
             bin_width = self.bin_edges[1:]-self.bin_edges[0:-1]
@@ -1492,7 +1494,7 @@ class StackedHistogram(HistogramCanvas):
         :rtype: Histogram
         """
         data_hist = copy.deepcopy(self.data_hist)
-        if name:
+        if data_hist is not None and name:
             data_hist.name=name
             data_hist.label=name
         return data_hist
